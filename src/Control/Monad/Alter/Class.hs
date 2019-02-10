@@ -1,61 +1,76 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE TypeOperators          #-}
 
 module Control.Monad.Alter.Class
-    ( Alters(..)
-    , ffor
-    , module Data.Proxy
-    ) where
+  ( Alters(..)
+  , X(..)
+  , update
+  , updateStatefully
+  , modify
+  , modifyStatefully
+  , repsert
+  , insert
+  , delete
+  , get
+  , alter_
+  , update_
+  , updateStatefully_
+  , modify_
+  , modifyStatefully_
+  , repsert_
+  ) where
 
-import Control.Monad             (join, void)
+import Control.Monad             (void)
 import Control.Monad.Trans.State (evalStateT, execStateT, StateT)
 import Data.Maybe
-import Data.Proxy
-import Data.Traversable          (for)
 
-ffor :: (Applicative f, Monad t, Traversable t) => t a -> (a -> f (t b)) -> f (t b)
-ffor t = fmap join . for t
+data X a = P
 
-class Monad m => Alters a m where
-  type Key a
-  alter :: Proxy a -> Key a -> (Maybe a -> m (Maybe a)) -> m (Maybe a)
+class Applicative f => Alters k a f where
+  alter :: X a -> k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
   {-# MINIMAL alter #-}
 
-  update :: Proxy a -> Key a -> (a -> m (Maybe a)) -> m (Maybe a)
-  update p k = alter p k . flip ffor
+update :: (k `Alters` a) m => X a -> k -> (a -> m (Maybe a)) -> m (Maybe a)
+update p k f = alter p k $ \case
+  Just a -> f a
+  Nothing -> pure Nothing
 
-  updateState :: Proxy a -> Key a -> StateT a m (Maybe a) -> m (Maybe a)
-  updateState p k = update p k . evalStateT
+updateStatefully :: (Monad m, (k `Alters` a) m) => X a -> k -> StateT a m (Maybe a) -> m (Maybe a)
+updateStatefully p k = update p k . evalStateT
 
-  modify :: Proxy a -> Key a -> (a -> m a) -> m a
-  modify p k f = fmap fromJust $ update p k (fmap Just . f)
+modify :: (k `Alters` a) m => X a -> k -> (a -> m a) -> m a
+modify p k f = fmap fromJust $ update p k (fmap Just . f)
 
-  modifyState :: Proxy a -> Key a -> StateT a m () -> m a
-  modifyState p k = modify p k . execStateT
+modifyStatefully :: (Monad m, (k `Alters` a) m) => X a -> k -> StateT a m () -> m a
+modifyStatefully p k = modify p k . execStateT
 
-  repsert :: Proxy a -> Key a -> (Maybe a -> m a) -> m a
-  repsert p k f = fmap fromJust $ alter p k (fmap Just . f)
+repsert :: (k `Alters` a) f => X a -> k -> (Maybe a -> f a) -> f a
+repsert p k f = fmap fromJust $ alter p k (fmap Just . f)
 
-  insert :: Proxy a -> Key a -> a -> m ()
-  insert p k a = alter_ p k (return . const (Just a))
+insert :: (k `Alters` a) f => X a -> k -> a -> f ()
+insert p k a = alter_ p k (pure . const (Just a))
 
-  get :: Proxy a -> Key a -> m (Maybe a)
-  get p k = alter p k return
+delete :: (k `Alters` a) f => X a -> k -> f ()
+delete p k = alter_ p k (pure . const Nothing)
 
-  alter_ :: Proxy a -> Key a -> (Maybe a -> m (Maybe a)) -> m ()
-  alter_ p k = void . alter p k
+get :: (k `Alters` a) f => X a -> k -> f (Maybe a)
+get p k = alter p k pure
 
-  update_ :: Proxy a -> Key a -> (a -> m (Maybe a)) -> m ()
-  update_ p k = void . update p k
+alter_ :: (k `Alters` a) f => X a -> k -> (Maybe a -> f (Maybe a)) -> f ()
+alter_ p k = void . alter p k
 
-  updateState_ :: Proxy a -> Key a -> StateT a m (Maybe a) -> m ()
-  updateState_ p k = void . updateState p k
+update_ :: (k `Alters` a) m => X a -> k -> (a -> m (Maybe a)) -> m ()
+update_ p k = void . update p k
 
-  modify_ :: Proxy a -> Key a -> (a -> m a) -> m ()
-  modify_ p k = void . modify p k
+updateStatefully_ :: (Monad m, (k `Alters` a) m) => X a -> k -> StateT a m (Maybe a) -> m ()
+updateStatefully_ p k = void . updateStatefully p k
 
-  modifyState_ :: Proxy a -> Key a -> StateT a m () -> m ()
-  modifyState_ p k = void . modifyState p k
+modify_ :: (k `Alters` a) m => X a -> k -> (a -> m a) -> m ()
+modify_ p k = void . modify p k
 
-  repsert_ :: Proxy a -> Key a -> (Maybe a -> m a) -> m ()
-  repsert_ p k = void . repsert p k
+modifyStatefully_ :: (Monad m, (k `Alters` a) m) => X a -> k -> StateT a m () -> m ()
+modifyStatefully_ p k = void . modifyStatefully p k
+
+repsert_ :: (k `Alters` a) f => X a -> k -> (Maybe a -> f a) -> f ()
+repsert_ p k = void . repsert p k
