@@ -11,6 +11,7 @@ module Control.Monad.Alter.Class
   , modifyStatefully
   , repsert
   , insert
+  , delete
   , get
   , alter_
   , update_
@@ -51,6 +52,9 @@ repsert p k f = fmap fromJust $ alter p k (fmap Just . f)
 
 insert :: (Applicative m, (k `Alters` a) m) => X a -> k -> a -> m ()
 insert p k a = alter_ p k (pure . const (Just a))
+
+delete :: (Applicative m, (k `Alters` a) m) => X a -> k -> m ()
+delete p k = alter_ p k (pure . const Nothing)
 
 get :: (Applicative m, (k `Alters` a) m) => X a -> k -> m (Maybe a)
 get p k = alter p k pure
