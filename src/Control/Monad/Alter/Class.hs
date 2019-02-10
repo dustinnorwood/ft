@@ -1,7 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies          #-}
 
-module Lib
+module Control.Monad.Alter.Class
     ( Alters(..)
     , ffor
     , module Data.Proxy
