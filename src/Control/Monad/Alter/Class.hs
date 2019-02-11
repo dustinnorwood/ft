@@ -1,14 +1,16 @@
-{-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module Control.Monad.Alter.Class
-  ( Modifies(..)
-  , X(..)
-  , alter
+  ( X(..)
+  , Modifiable(..)
+  , modify_
+  , modifyStatefully
+  , modifyStatefully_
+  , get
+  , put
+  , Alters(..)
   , alter_
   , update
   , update_
@@ -20,7 +22,7 @@ module Control.Monad.Alter.Class
   , adjustStatefully_
   , repsert
   , repsert_
-  , get
+  , lookup
   , insert
   , delete
   ) where
@@ -28,16 +30,30 @@ module Control.Monad.Alter.Class
 import Control.Monad             (void)
 import Control.Monad.Trans.State (evalStateT, execStateT, StateT)
 import Data.Maybe
+import Prelude                   hiding (lookup)
 
 data X a = P
 
-class Applicative f => Modifies k a f where
-  modify :: X a -> k -> (a -> f a) -> f a
+class Applicative f => Modifiable a f where
+  modify :: X a -> (a -> f a) -> f a
 
-type Alters k a f = Modifies k (Maybe a) f
+modify_ :: Modifiable a f => X a -> (a -> f a) -> f ()
+modify_ p = void . modify p
 
-alter :: (k `Alters` a) f => X a -> k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
-alter (P::X a) = modify (P::X (Maybe a))
+modifyStatefully :: (Monad m, Modifiable a m) => X a -> StateT a m () -> m a
+modifyStatefully p = modify p . execStateT
+
+modifyStatefully_ :: (Monad m, Modifiable a m) => X a -> StateT a m () -> m ()
+modifyStatefully_ p = void . modifyStatefully p
+
+get :: Modifiable a f => X a -> f a
+get p = modify p pure
+
+put :: Modifiable a f => X a -> a -> f ()
+put p a = modify_ p (pure . const a)
+
+class Applicative f => Alters k a f where
+  alter :: X a -> k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
 
 alter_ :: (k `Alters` a) f => X a -> k -> (Maybe a -> f (Maybe a)) -> f ()
 alter_ p k = void . alter p k
@@ -74,8 +90,8 @@ repsert p k f = fmap fromJust $ alter p k (fmap Just . f)
 repsert_ :: (k `Alters` a) f => X a -> k -> (Maybe a -> f a) -> f ()
 repsert_ p k = void . repsert p k
 
-get :: (k `Alters` a) f => X a -> k -> f (Maybe a)
-get p k = alter p k pure
+lookup :: (k `Alters` a) f => X a -> k -> f (Maybe a)
+lookup p k = alter p k pure
 
 insert :: (k `Alters` a) f => X a -> k -> a -> f ()
 insert p k a = alter_ p k (pure . const (Just a))
