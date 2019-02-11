@@ -2,15 +2,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeOperators         #-}
 
-module Control.Monad.Alter.Class
-  ( X(..)
-  , Modifiable(..)
-  , modify_
-  , modifyStatefully
-  , modifyStatefully_
-  , get
-  , put
-  , Alters(..)
+module Control.Monad.Change.Alter
+  ( Alters(..)
   , alter_
   , update
   , update_
@@ -27,30 +20,11 @@ module Control.Monad.Alter.Class
   , delete
   ) where
 
-import Control.Monad             (void)
-import Control.Monad.Trans.State (evalStateT, execStateT, StateT)
+import Control.Monad              (void)
+import Control.Monad.Change.Proxy (X(..))
+import Control.Monad.Trans.State  (evalStateT, execStateT, StateT)
 import Data.Maybe
-import Prelude                   hiding (lookup)
-
-data X a = P
-
-class Applicative f => Modifiable a f where
-  modify :: X a -> (a -> f a) -> f a
-
-modify_ :: Modifiable a f => X a -> (a -> f a) -> f ()
-modify_ p = void . modify p
-
-modifyStatefully :: (Monad m, Modifiable a m) => X a -> StateT a m () -> m a
-modifyStatefully p = modify p . execStateT
-
-modifyStatefully_ :: (Monad m, Modifiable a m) => X a -> StateT a m () -> m ()
-modifyStatefully_ p = void . modifyStatefully p
-
-get :: Modifiable a f => X a -> f a
-get p = modify p pure
-
-put :: Modifiable a f => X a -> a -> f ()
-put p a = modify_ p (pure . const a)
+import Prelude                    hiding (lookup)
 
 class Applicative f => Alters k a f where
   alter :: X a -> k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
