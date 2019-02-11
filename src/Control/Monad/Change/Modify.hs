@@ -11,7 +11,7 @@ module Control.Monad.Change.Modify
 
 import Control.Monad              (void)
 import Control.Monad.Change.Proxy (X(..))
-import Control.Monad.Trans.State  (evalStateT, execStateT, StateT)
+import Control.Monad.Trans.State  (execStateT, StateT)
 
 class Applicative f => Modifiable a f where
   modify :: X a -> (a -> f a) -> f a
