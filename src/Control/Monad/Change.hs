@@ -1,26 +1,7 @@
 module Control.Monad.Change
   ( X(..)
   , Modifiable(..)
-  , modify_
-  , modifyStatefully
-  , modifyStatefully_
-  , get
-  , put
   , Alters(..)
-  , alter_
-  , update
-  , update_
-  , updateStatefully_
-  , updateStatefully
-  , adjust
-  , adjust_
-  , adjustStatefully
-  , adjustStatefully_
-  , repsert
-  , repsert_
-  , lookup
-  , insert
-  , delete
   ) where
 
 import Control.Monad.Change.Alter

@@ -4,32 +4,18 @@
 
 module Control.Comonad.Change.Alter
   ( CoAlters(..)
-  , alter_
-  , update
-  , update_
-  , updateStatefully_
-  , updateStatefully
-  , adjust
-  , adjust_
-  , adjustStatefully
-  , adjustStatefully_
-  , repsert
-  , repsert_
-  , lookup
-  , insert
-  , delete
   ) where
 
 import Control.Comonad
-import Control.Monad              (void)
-import Control.Monad.Change.Proxy (X(..))
-import Control.Monad.Trans.State  (evalStateT, execStateT, StateT)
+import Control.Monad.Change.Proxy   (X(..))
 import Data.Maybe
-import Prelude                    hiding (lookup)
+import Prelude                      hiding (lookup)
 
 class Comonad w => CoAlters k a w where
   coalter :: X a -> k -> (w (Maybe a) -> Maybe a) -> Maybe a
 
+-- TODO: Fill this in
+{-
 coalter_ :: (k `CoAlters` a) w => X a -> k -> (w (Maybe a) -> Maybe a) -> ()
 coalter_ p k = const () $ coalter p k
 
@@ -73,3 +59,4 @@ coinsert p k a = corepsert_ p k (const a)
 
 codelete :: (k `CoAlters` a) w => X a -> k -> w ()
 codelete p k = coalter_ p k (const Nothing)
+-}
