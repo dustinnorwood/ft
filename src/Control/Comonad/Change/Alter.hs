@@ -7,7 +7,6 @@ module Control.Comonad.Change.Alter
   ) where
 
 import Control.Comonad
-import Data.Maybe
 import Data.Proxy
 
 class Comonad w => CoAlters k a w where
