@@ -1,60 +1,50 @@
-{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeOperators         #-}
 
 module Control.Comonad.Change.Alter
   ( CoAlters(..)
   ) where
 
 import Control.Comonad
+import Control.Monad (void)
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+import Data.Maybe
 import Data.Proxy
 
-class Comonad w => CoAlters k a w where
-  coalter :: Proxy a -> k -> (w (Maybe a) -> Maybe a) -> Maybe a
+class (Ord k, Comonad w) => CoAlters k a w where
+  coalterMany :: Proxy a -> [k] -> (w (Map k a) -> Map k a) -> w (Map k a)
 
--- TODO: Fill this in
-{-
-coalter_ :: (k `CoAlters` a) w => Proxy a -> k -> (w (Maybe a) -> Maybe a) -> ()
-coalter_ p k = const () $ coalter p k
+  coalter :: Proxy a -> k -> (w (Maybe a) -> Maybe a) -> w (Maybe a)
+  coalter p k f = M.lookup k <$> coalterMany p [k] (maybe M.empty (M.singleton k) . f . fmap (M.lookup k))
 
-coupdate :: (k `CoAlters` a) w => Proxy a -> k -> (w a -> Maybe a) -> w (Maybe a)
-coupdate p k f = coalter p k $ \wma -> case cosequence wma of
-  Just wa -> coalter p k (cosequence $ Just wa)
-  Nothing -> wma
+  coalter_ :: Proxy a -> k -> (w (Maybe a) -> Maybe a) -> w ()
+  coalter_ p k = void . coalter p k
 
-coupdate_ :: (k `CoAlters` a) w => Proxy a -> k -> (a -> w (Maybe a)) -> ()
-coupdate_ p k = const () $ coupdate p k
+  coupdate :: Proxy a -> k -> (w a -> Maybe a) -> w (Maybe a)
+  coupdate p k f = coalter p k $ \wma -> case extract wma of
+                                          Nothing -> Nothing
+                                          Just _ -> f (fromJust <$> wma)
 
-coupdateStorefully :: (k `CoAlters` a) w => Proxy a -> k -> StoreT a w (Maybe a) -> Maybe a
-coupdateStorefully p k = coupdate p k . peek
+  coupdate_ :: Proxy a -> k -> (w a -> Maybe a) -> w ()
+  coupdate_ p k = void . coupdate p k
 
-coupdateStorefully_ :: (k `CoAlters` a) w => Proxy a -> k -> StoreT a w (Maybe a) -> ()
-coupdateStorefully_ p k = const () $ coupdateStorefully p k
+  coadjust :: Proxy a -> k -> (w a -> a) -> w a
+  coadjust p k f = fromJust <$> coupdate p k (Just . f)
 
-coadjust :: (k `CoAlters` a) w => Proxy a -> k -> (w a -> a) -> a
-coadjust p k w = fromJust $ coupdate p k (Just . f)
+  coadjust_ :: Proxy a -> k -> (w a -> a) -> w ()
+  coadjust_ p k = void . coadjust p k
 
-coadjust_ :: (k `CoAlters` a) w => Proxy a -> k -> (w a -> a) -> ()
-coadjust_ p k = const () $ coadjust p k
+  corepsert :: Proxy a -> k -> (w (Maybe a) -> a) -> w a
+  corepsert p k f = fromJust <$> coalter p k (Just . f)
 
-coadjustStatefully :: (k `CoAlters` a) w => Proxy a -> k -> StoreT a w () -> a
-coadjustStatefully p k = coadjust p k . pos
+  corepsert_ :: Proxy a -> k -> (w (Maybe a) -> a) -> w ()
+  corepsert_ p k = void . corepsert p k
 
-coadjustStorefully_ :: (k `CoAlters` a) w => Proxy a -> k -> StoreT a w () -> ()
-coadjustStorefully_ p k = const () $ coadjustStorefully p k
+  colookup :: Proxy a -> k -> w (Maybe a)
+  colookup p k = coalter p k extract
 
-corepsert :: (k `CoAlters` a) w => Proxy a -> k -> (w (Maybe a) -> a) -> a
-corepsert p k w = fromJust $ coalter p k (Just . f)
+  coinsert :: Proxy a -> k -> a -> w ()
+  coinsert p k a = corepsert_ p k (const a)
 
-corepsert_ :: (k `CoAlters` a) w => Proxy a -> k -> (w (Maybe a) -> a) -> ()
-corepsert_ p k = const () $ corepsert p k
-
-colookup :: (k `CoAlters` a) w => Proxy a -> k -> Maybe a
-colookup p k = coalter p k extract
-
-coinsert :: (k `CoAlters` a) w => Proxy a -> k -> a -> ()
-coinsert p k a = corepsert_ p k (const a)
-
-codelete :: (k `CoAlters` a) w => Proxy a -> k -> w ()
-codelete p k = coalter_ p k (const Nothing)
--}
+  codelete :: Proxy a -> k -> w ()
+  codelete p k = coalter_ p k (const Nothing)

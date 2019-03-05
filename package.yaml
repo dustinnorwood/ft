@@ -27,6 +27,8 @@ dependencies:
 
 library:
   source-dirs: src
+  ghc-options:
+  - -Werror
 
 tests:
   monad-alter-test:
