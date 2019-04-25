@@ -12,17 +12,24 @@ import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as M
 import           Data.Maybe
 import           Data.Proxy
+import           Data.Traversable           (traverse)
 import           Prelude                    hiding (lookup)
 
 class (Ord k, Applicative f) => Alters k a f where
-  alterMany :: Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f (Map k a)
-  {-# MINIMAL alterMany #-}
 
-  alterMany_ :: Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f ()
-  alterMany_ p ks = void . alterMany p ks
+  alterMany :: Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f (Map k a)
+  alterMany x ks f =
+    let f' k = fmap (M.lookup k) . f . maybe M.empty (M.singleton k)
+     in fmap (M.fromList . map (fmap fromJust) . filter (isJust . snd) . zip ks) $
+          traverse (\k -> alter x k (f' k)) ks
 
   alter :: Proxy a -> k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
   alter x k f = M.lookup k <$> alterMany x [k] (M.alterF f k)
+
+  {-# MINIMAL alterMany | alter #-}
+
+  alterMany_ :: Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f ()
+  alterMany_ p ks = void . alterMany p ks
 
   alter_ :: Proxy a -> k -> (Maybe a -> f (Maybe a)) -> f ()
   alter_ p k = void . alter p k
