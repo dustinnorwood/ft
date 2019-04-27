@@ -1,13 +1,19 @@
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module Control.Monad.Change.Modify
   ( Modifiable(..)
   , module Data.Proxy
   ) where
 
-import Control.Monad              (void)
-import Control.Monad.Trans.State  (execStateT, StateT)
-import Data.Proxy
+import           Control.Monad             (void)
+import           Control.Monad.IO.Class
+import qualified Control.Monad.State.Class as State
+import           Control.Monad.Trans.Reader
+import           Control.Monad.Trans.State (execStateT, StateT)
+import           Data.IORef
+import           Data.Proxy
 
 class Monad f => Modifiable a f where
   modify :: Proxy a -> (a -> f a) -> f a
@@ -29,3 +35,13 @@ class Monad f => Modifiable a f where
 
   modifyStatefully_ :: Proxy a -> StateT a f () -> f ()
   modifyStatefully_ p = void . modifyStatefully p
+
+
+
+instance (Monad m, State.MonadState s m) => Modifiable s m where
+  get _   = State.get
+  put _ s = State.put s
+
+instance {-# OVERLAPPING #-} MonadIO m => Modifiable s (ReaderT (IORef s) m) where
+  get _   = liftIO . readIORef =<< ask
+  put _ s = liftIO . flip writeIORef s =<< ask
