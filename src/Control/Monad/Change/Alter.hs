@@ -1,32 +1,59 @@
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module Control.Monad.Change.Alter
   ( Alters(..)
+  , module Data.Proxy
   ) where
 
-import           Control.Monad              (void)
+import           Control.Monad
 import           Control.Monad.Trans.State  (evalStateT, execStateT, StateT)
 import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as M
 import           Data.Maybe
 import           Data.Proxy
-import           Data.Traversable           (traverse)
 import           Prelude                    hiding (lookup)
 
-class (Ord k, Applicative f) => Alters k a f where
+class (Ord k, Monad f) => Alters k a f where
 
   alterMany :: Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f (Map k a)
-  alterMany x ks f =
-    let f' k = fmap (M.lookup k) . f . maybe M.empty (M.singleton k)
-     in fmap (M.fromList . map (fmap fromJust) . filter (isJust . snd) . zip ks) $
-          traverse (\k -> alter x k (f' k)) ks
+  alterMany p ks f = do
+    m <- lookupMany p ks
+    m' <- f m
+    let inserts = m' M.\\ m
+        deletes = M.keys $ m  M.\\ m'
+    deleteMany p deletes
+    insertMany p inserts
+    return m'
 
   alter :: Proxy a -> k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
-  alter x k f = M.lookup k <$> alterMany x [k] (M.alterF f k)
+  alter p k f = M.lookup k <$> alterMany p [k] (M.alterF f k)
 
-  {-# MINIMAL alterMany | alter #-}
+  lookupMany :: Proxy a -> [k] -> f (Map k a)
+  lookupMany p ks = M.fromList . catMaybes <$> forM ks (\k -> fmap (k,) <$> lookup p k)
+
+  lookup :: Proxy a -> k -> f (Maybe a)
+  lookup p k = alter p k pure
+
+  insertMany :: Proxy a -> Map k a -> f ()
+  insertMany p m = forM_ (M.assocs m) . uncurry $ insert p
+
+  insert :: Proxy a -> k -> a -> f ()
+  insert p k a = alter_ p k (pure . const (Just a))
+
+  deleteMany :: Proxy a -> [k] -> f ()
+  deleteMany p ks = forM_ ks $ delete p
+
+  delete :: Proxy a -> k -> f ()
+  delete p k = alter_ p k (pure . const Nothing)
+
+  {-# MINIMAL alterMany
+            | alter
+            | lookupMany, insertMany, deleteMany
+            | lookup, insert, delete
+    #-}
 
   alterMany_ :: Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f ()
   alterMany_ p ks = void . alterMany p ks
@@ -65,15 +92,3 @@ class (Ord k, Applicative f) => Alters k a f where
 
   repsert_ :: Proxy a -> k -> (Maybe a -> f a) -> f ()
   repsert_ p k = void . repsert p k
-
-  lookupMany :: Proxy a -> [k] -> f (Map k a)
-  lookupMany p k = alterMany p k pure
-
-  lookup :: Proxy a -> k -> f (Maybe a)
-  lookup p k = alter p k pure
-
-  insert :: Proxy a -> k -> a -> f ()
-  insert p k a = alter_ p k (pure . const (Just a))
-
-  delete :: Proxy a -> k -> f ()
-  delete p k = alter_ p k (pure . const Nothing)
