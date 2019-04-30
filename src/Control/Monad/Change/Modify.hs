@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE Rank2Types            #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
 module Control.Monad.Change.Modify
@@ -7,6 +8,7 @@ module Control.Monad.Change.Modify
   , module Data.Proxy
   ) where
 
+import           Control.Lens
 import           Control.Monad             (void)
 import           Control.Monad.IO.Class
 import qualified Control.Monad.State.Class as State
@@ -45,3 +47,12 @@ instance (Monad m, State.MonadState s m) => Modifiable s m where
 instance {-# OVERLAPPING #-} MonadIO m => Modifiable s (ReaderT (IORef s) m) where
   get _   = liftIO . readIORef =<< ask
   put _ s = liftIO . flip writeIORef s =<< ask
+
+
+
+class Has a b where
+  this :: Proxy a -> Lens' b a
+
+instance {-# OVERLAPPING #-} (Monad m, Has a b) => Modifiable a (StateT b m) where
+  get p   = use (this p)
+  put p s = assign (this p) s
