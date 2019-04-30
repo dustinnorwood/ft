@@ -5,6 +5,7 @@
 
 module Control.Monad.Change.Modify
   ( Modifiable(..)
+  , Has(..)
   , module Data.Proxy
   ) where
 
