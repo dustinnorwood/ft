@@ -57,3 +57,19 @@ class Has a b where
 instance {-# OVERLAPPING #-} (Monad m, Has a b) => Modifiable a (StateT b m) where
   get p   = use (this p)
   put p s = assign (this p) s
+
+
+
+class Accessible a f where
+  access :: Proxy a -> f a
+
+accesses :: (Functor f, Accessible a f) => Proxy a -> (a -> b) -> f b
+accesses = flip fmap . access
+
+
+
+instance (Monad f, Modifiable a f) => Accessible a f where
+  access = get
+
+instance Monad m => Accessible a (ReaderT a m) where
+  access = const ask
