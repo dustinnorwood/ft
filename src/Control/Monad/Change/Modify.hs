@@ -13,11 +13,8 @@ module Control.Monad.Change.Modify
 
 import           Control.Lens
 import           Control.Monad             (void)
-import           Control.Monad.IO.Class
-import qualified Control.Monad.State.Class as State
 import           Control.Monad.Trans.Reader
 import           Control.Monad.Trans.State (execStateT, StateT)
-import           Data.IORef
 import           Data.Proxy
 
 class Monad f => Modifiable a f where
@@ -43,20 +40,10 @@ class Monad f => Modifiable a f where
 
 
 
-instance (Monad m, State.MonadState s m) => Modifiable s m where
-  get _   = State.get
-  put _ s = State.put s
-
-instance {-# OVERLAPPING #-} MonadIO m => Modifiable s (ReaderT (IORef s) m) where
-  get _   = liftIO . readIORef =<< ask
-  put _ s = liftIO . flip writeIORef s =<< ask
-
-
-
 class Has a b where
   this :: Proxy a -> Lens' b a
 
-instance {-# OVERLAPPING #-} (Monad m, Has a b) => Modifiable a (StateT b m) where
+instance {-# OVERLAPPABLE #-} (Monad m, Has a b) => Modifiable a (StateT b m) where
   get p   = use (this p)
   put p s = assign (this p) s
 
@@ -70,7 +57,7 @@ accesses = flip fmap . access
 
 
 
-instance (Monad f, Modifiable a f) => Accessible a f where
+instance {-# OVERLAPPABLE #-} (Monad f, Modifiable a f) => Accessible a f where
   access = get
 
 instance Monad m => Accessible a (ReaderT a m) where
