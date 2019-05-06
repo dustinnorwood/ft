@@ -10,9 +10,12 @@
 
 module Control.Monad.Change.Alter
   ( Alters(..)
+  , Maps(..)
+  , Selectable(..)
   , module Data.Proxy
   ) where
 
+import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Change.Modify
 import           Control.Monad.IO.Class
@@ -25,7 +28,6 @@ import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as M
 import           Data.Maybe
 import           Data.Proxy
-import qualified Data.Set                   as S
 import           Prelude                    hiding (lookup)
 
 class (Ord k, Monad f) => Alters k a f where
@@ -107,22 +109,29 @@ class (Ord k, Monad f) => Alters k a f where
 
 
 
-instance (Monad m, Ord k) => (k `Alters` a) (StateT (Map k a) m) where
-  lookupMany _ ks = flip M.restrictKeys (S.fromList ks) <$> State.get
-  insertMany _ ks = State.modify (M.union ks)
-  deleteMany _ ks = State.modify (`M.withoutKeys` (S.fromList ks))
+class Maps k a b where
+  that :: Proxy a -> k -> Lens' b (Maybe a)
 
-instance Monad m => (Int `Alters` a) (StateT (IM.IntMap a) m) where
-  lookup _ k   = IM.lookup k <$> State.get
-  insert _ k a = State.modify (IM.insert k a)
-  delete _ k   = State.modify (IM.delete k)
+instance Ord k => (k `Maps` a) (Map k a) where
+  that _ k = lens (M.lookup k) (flip (maybe (M.delete k) (M.insert k)))
 
-instance (MonadIO m, Ord k) => (k `Alters` a) (ReaderT (IORef (Map k a)) m) where
-  lookupMany _ ks = fmap (flip M.restrictKeys (S.fromList ks)) . liftIO . readIORef =<< ask
-  insertMany _ ks = liftIO . flip modifyIORef' (M.union ks) =<< ask
-  deleteMany _ ks = liftIO . flip modifyIORef' (`M.withoutKeys` (S.fromList ks)) =<< ask
+instance (Int `Maps` a) (IM.IntMap a) where
+  that _ k = lens (IM.lookup k) (flip (maybe (IM.delete k) (IM.insert k)))
 
-instance MonadIO m => (Int `Alters` a) (ReaderT (IORef (IM.IntMap a)) m) where
-  lookup _ k   = fmap (IM.lookup k) . liftIO . readIORef =<< ask
-  insert _ k a = liftIO . flip modifyIORef' (IM.insert k a) =<< ask
-  delete _ k   = liftIO . flip modifyIORef' (IM.delete k) =<< ask
+instance (Monad m, Ord k, MonadReader b m, (k `Maps` a) b) => (k `Alters` a) (StateT b m) where
+  lookup p k = view (that p k)
+  insert p k = State.modify . set (that p k) . Just
+  delete p k = State.modify $ that p k .~ Nothing
+
+instance (MonadIO m, Ord k, (k `Maps` a) b) => (k `Alters` a) (ReaderT (IORef b) m) where
+  lookup p k   = fmap (view $ that p k) . liftIO . readIORef =<< ask
+  insert p k a = liftIO . flip modifyIORef' (that p k .~ Just a) =<< ask
+  delete p k   = liftIO . flip modifyIORef' (that p k .~ Nothing) =<< ask
+
+
+
+class Selectable k a f where
+  select :: Proxy a -> k -> f (Maybe a)
+
+instance (Monad f, (k `Alters` a) f) => Selectable k a f where
+  select = lookup

@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
 module Control.Monad.Change.Modify
@@ -43,7 +44,10 @@ class Monad f => Modifiable a f where
 class Has b a where
   this :: Proxy a -> Lens' b a
 
-instance (Monad m, Has b a) => Modifiable a (StateT b m) where
+instance (Identity a) `Has` a where
+  this _ = lens runIdentity (const Identity)
+
+instance (Monad m, b `Has` a) => Modifiable a (StateT b m) where
   get p   = use (this p)
   put p s = assign (this p) s
 
