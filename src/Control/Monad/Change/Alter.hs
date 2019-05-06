@@ -12,7 +12,7 @@ module Control.Monad.Change.Alter
   ( Alters(..)
   , Maps(..)
   , Selectable(..)
-  , Replacable(..)
+  , Replaceable(..)
   , Removable(..)
   , module Data.Proxy
   ) where
@@ -22,15 +22,15 @@ import           Control.Monad
 import           Control.Monad.Change.Modify
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
-import qualified Control.Monad.State.Class  as State
-import           Control.Monad.Trans.State  (evalStateT, execStateT, StateT)
-import qualified Data.IntMap                as IM
+import qualified Control.Monad.State.Class   as State
+import           Control.Monad.Trans.State   (evalStateT, execStateT, StateT)
+import qualified Data.IntMap                 as IM
 import           Data.IORef
-import           Data.Map.Strict            (Map)
-import qualified Data.Map.Strict            as M
+import           Data.Map.Strict             (Map)
+import qualified Data.Map.Strict             as M
 import           Data.Maybe
 import           Data.Proxy
-import           Prelude                    hiding (lookup)
+import           Prelude                     hiding (lookup)
 
 class (Ord k, Monad f) => Alters k a f where
 
@@ -141,15 +141,21 @@ instance (MonadIO m, Ord k, (k `Maps` a) b) => (k `Alters` a) (ReaderT (IORef b)
 class Selectable k a f where
   select :: Proxy a -> k -> f (Maybe a)
 
-instance (Monad f, (k `Alters` a) f) => Selectable k a f where
+instance (Monad m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Selectable k a) (StateT b m) where
+  select = lookup
+
+instance (MonadIO m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Selectable k a) (ReaderT (IORef b) m) where
   select = lookup
 
 
 
-class Replacable k a f where
+class Replaceable k a f where
   replace :: Proxy a -> k -> a -> f ()
 
-instance (Monad f, (k `Alters` a) f) => Replacable k a f where
+instance (Monad m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Replaceable k a) (StateT b m) where
+  replace = insert
+
+instance (MonadIO m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Replaceable k a) (ReaderT (IORef b) m) where
   replace = insert
 
 
@@ -157,5 +163,8 @@ instance (Monad f, (k `Alters` a) f) => Replacable k a f where
 class Removable k a f where
   remove :: Proxy a -> k -> f ()
 
-instance (Monad f, (k `Alters` a) f) => Removable k a f where
+instance (Monad m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Removable k a) (StateT b m) where
+  remove = delete
+
+instance (MonadIO m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Removable k a) (ReaderT (IORef b) m) where
   remove = delete

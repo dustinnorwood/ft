@@ -16,6 +16,7 @@ import           Control.Lens
 import           Control.Monad             (void)
 import           Control.Monad.Trans.Reader
 import           Control.Monad.Trans.State (execStateT, StateT)
+import qualified Control.Monad.Trans.State as State
 import           Data.Proxy
 
 class Monad f => Modifiable a f where
@@ -44,6 +45,9 @@ class Monad f => Modifiable a f where
 class Has b a where
   this :: Proxy a -> Lens' b a
 
+instance a `Has` a where
+  this _ = lens id (const id)
+
 instance (Identity a) `Has` a where
   this _ = lens runIdentity (const Identity)
 
@@ -61,8 +65,8 @@ accesses = flip fmap . access
 
 
 
-instance (Monad f, Modifiable a f) => Accessible a f where
-  access = get
+instance Monad m => Accessible a (StateT a m) where
+  access = const State.get
 
 instance Monad m => Accessible a (ReaderT a m) where
   access = const ask
