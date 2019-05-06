@@ -12,6 +12,8 @@ module Control.Monad.Change.Alter
   ( Alters(..)
   , Maps(..)
   , Selectable(..)
+  , Replacable(..)
+  , Removable(..)
   , module Data.Proxy
   ) where
 
@@ -118,6 +120,12 @@ instance Ord k => (k `Maps` a) (Map k a) where
 instance (Int `Maps` a) (IM.IntMap a) where
   that _ k = lens (IM.lookup k) (flip (maybe (IM.delete k) (IM.insert k)))
 
+instance (Ord k, b `Has` (Map k a)) => (k `Maps` a) b where
+  that _ k = this (Proxy :: Proxy (Map k a)) . at k
+
+instance b `Has` (IM.IntMap a) => (Int `Maps` a) b where
+  that _ k = this (Proxy :: Proxy (IM.IntMap a)) . at k
+
 instance (Monad m, Ord k, MonadReader b m, (k `Maps` a) b) => (k `Alters` a) (StateT b m) where
   lookup p k = view (that p k)
   insert p k = State.modify . set (that p k) . Just
@@ -135,3 +143,19 @@ class Selectable k a f where
 
 instance (Monad f, (k `Alters` a) f) => Selectable k a f where
   select = lookup
+
+
+
+class Replacable k a f where
+  replace :: Proxy a -> k -> a -> f ()
+
+instance (Monad f, (k `Alters` a) f) => Replacable k a f where
+  replace = insert
+
+
+
+class Removable k a f where
+  remove :: Proxy a -> k -> f ()
+
+instance (Monad f, (k `Alters` a) f) => Removable k a f where
+  remove = delete
