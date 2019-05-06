@@ -43,7 +43,7 @@ class Monad f => Modifiable a f where
 class Has b a where
   this :: Proxy a -> Lens' b a
 
-instance {-# OVERLAPPABLE #-} (Monad m, Has b a) => Modifiable a (StateT b m) where
+instance (Monad m, Has b a) => Modifiable a (StateT b m) where
   get p   = use (this p)
   put p s = assign (this p) s
 
@@ -57,7 +57,7 @@ accesses = flip fmap . access
 
 
 
-instance {-# OVERLAPPABLE #-} (Monad f, Modifiable a f) => Accessible a f where
+instance (Monad f, Modifiable a f) => Accessible a f where
   access = get
 
 instance Monad m => Accessible a (ReaderT a m) where
