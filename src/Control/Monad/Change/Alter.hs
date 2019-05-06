@@ -1,7 +1,9 @@
+{-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
@@ -12,6 +14,7 @@ module Control.Monad.Change.Alter
   ) where
 
 import           Control.Monad
+import           Control.Monad.Change.Modify
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import qualified Control.Monad.State.Class  as State
@@ -104,22 +107,22 @@ class (Ord k, Monad f) => Alters k a f where
 
 
 
-instance (Monad m, Ord k, State.MonadState (Map k a) m) => (k `Alters` a) m where
+instance (Monad m, Ord k) => (k `Alters` a) (StateT (Map k a) m) where
   lookupMany _ ks = flip M.restrictKeys (S.fromList ks) <$> State.get
   insertMany _ ks = State.modify (M.union ks)
   deleteMany _ ks = State.modify (`M.withoutKeys` (S.fromList ks))
 
-instance {-# OVERLAPPING #-} (Monad m, State.MonadState (IM.IntMap a) m) => (Int `Alters` a) m where
+instance Monad m => (Int `Alters` a) (StateT (IM.IntMap a) m) where
   lookup _ k   = IM.lookup k <$> State.get
   insert _ k a = State.modify (IM.insert k a)
   delete _ k   = State.modify (IM.delete k)
 
-instance {-# OVERLAPPING #-} (MonadIO m, Ord k) => (k `Alters` a) (ReaderT (IORef (Map k a)) m) where
+instance (MonadIO m, Ord k) => (k `Alters` a) (ReaderT (IORef (Map k a)) m) where
   lookupMany _ ks = fmap (flip M.restrictKeys (S.fromList ks)) . liftIO . readIORef =<< ask
   insertMany _ ks = liftIO . flip modifyIORef' (M.union ks) =<< ask
   deleteMany _ ks = liftIO . flip modifyIORef' (`M.withoutKeys` (S.fromList ks)) =<< ask
 
-instance {-# OVERLAPPING #-} MonadIO m => (Int `Alters` a) (ReaderT (IORef (IM.IntMap a)) m) where
+instance MonadIO m => (Int `Alters` a) (ReaderT (IORef (IM.IntMap a)) m) where
   lookup _ k   = fmap (IM.lookup k) . liftIO . readIORef =<< ask
   insert _ k a = liftIO . flip modifyIORef' (IM.insert k a) =<< ask
   delete _ k   = liftIO . flip modifyIORef' (IM.delete k) =<< ask

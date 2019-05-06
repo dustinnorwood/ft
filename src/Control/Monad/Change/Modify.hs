@@ -40,10 +40,10 @@ class Monad f => Modifiable a f where
 
 
 
-class Has a b where
+class Has b a where
   this :: Proxy a -> Lens' b a
 
-instance {-# OVERLAPPABLE #-} (Monad m, Has a b) => Modifiable a (StateT b m) where
+instance {-# OVERLAPPABLE #-} (Monad m, Has b a) => Modifiable a (StateT b m) where
   get p   = use (this p)
   put p s = assign (this p) s
 
