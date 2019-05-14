@@ -51,7 +51,7 @@ instance a `Has` a where
 instance (Identity a) `Has` a where
   this _ = lens runIdentity (const Identity)
 
-instance (Monad m, b `Has` a) => Modifiable a (StateT b m) where
+instance {-# OVERLAPPABLE #-} (Monad m, b `Has` a) => Modifiable a (StateT b m) where
   get p   = use (this p)
   put p s = assign (this p) s
 

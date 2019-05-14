@@ -126,12 +126,12 @@ instance (Ord k, b `Has` (Map k a)) => (k `Maps` a) b where
 instance b `Has` (IM.IntMap a) => (Int `Maps` a) b where
   that _ k = this (Proxy :: Proxy (IM.IntMap a)) . at k
 
-instance (Monad m, Ord k, (k `Maps` a) b) => (k `Alters` a) (StateT b m) where
+instance {-# OVERLAPPABLE #-} (Monad m, Ord k, (k `Maps` a) b) => (k `Alters` a) (StateT b m) where
   lookup p k = use (that p k)
   insert p k = State.modify . set (that p k) . Just
   delete p k = State.modify $ that p k .~ Nothing
 
-instance (MonadIO m, Ord k, (k `Maps` a) b) => (k `Alters` a) (ReaderT (IORef b) m) where
+instance {-# OVERLAPPABLE #-} (MonadIO m, Ord k, (k `Maps` a) b) => (k `Alters` a) (ReaderT (IORef b) m) where
   lookup p k   = fmap (view $ that p k) . liftIO . readIORef =<< ask
   insert p k a = liftIO . flip modifyIORef' (that p k .~ Just a) =<< ask
   delete p k   = liftIO . flip modifyIORef' (that p k .~ Nothing) =<< ask
