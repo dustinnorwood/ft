@@ -126,8 +126,8 @@ instance (Ord k, b `Has` (Map k a)) => (k `Maps` a) b where
 instance b `Has` (IM.IntMap a) => (Int `Maps` a) b where
   that _ k = this (Proxy :: Proxy (IM.IntMap a)) . at k
 
-instance (Monad m, Ord k, MonadReader b m, (k `Maps` a) b) => (k `Alters` a) (StateT b m) where
-  lookup p k = view (that p k)
+instance (Monad m, Ord k, (k `Maps` a) b) => (k `Alters` a) (StateT b m) where
+  lookup p k = use (that p k)
   insert p k = State.modify . set (that p k) . Just
   delete p k = State.modify $ that p k .~ Nothing
 
@@ -141,10 +141,10 @@ instance (MonadIO m, Ord k, (k `Maps` a) b) => (k `Alters` a) (ReaderT (IORef b)
 class Selectable k a f where
   select :: Proxy a -> k -> f (Maybe a)
 
-instance (Monad m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Selectable k a) (StateT b m) where
+instance (Monad m, Ord k, b `Has` (Map k a)) => (Selectable k a) (StateT b m) where
   select = lookup
 
-instance (MonadIO m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Selectable k a) (ReaderT (IORef b) m) where
+instance (MonadIO m, Ord k, b `Has` (Map k a)) => (Selectable k a) (ReaderT (IORef b) m) where
   select = lookup
 
 
@@ -152,10 +152,10 @@ instance (MonadIO m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Selectable k
 class Replaceable k a f where
   replace :: Proxy a -> k -> a -> f ()
 
-instance (Monad m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Replaceable k a) (StateT b m) where
+instance (Monad m, Ord k, b `Has` (Map k a)) => (Replaceable k a) (StateT b m) where
   replace = insert
 
-instance (MonadIO m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Replaceable k a) (ReaderT (IORef b) m) where
+instance (MonadIO m, Ord k, b `Has` (Map k a)) => (Replaceable k a) (ReaderT (IORef b) m) where
   replace = insert
 
 
@@ -163,8 +163,8 @@ instance (MonadIO m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Replaceable 
 class Removable k a f where
   remove :: Proxy a -> k -> f ()
 
-instance (Monad m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Removable k a) (StateT b m) where
+instance (Monad m, Ord k, b `Has` (Map k a)) => (Removable k a) (StateT b m) where
   remove = delete
 
-instance (MonadIO m, Ord k, MonadReader b m, b `Has` (Map k a)) => (Removable k a) (ReaderT (IORef b) m) where
+instance (MonadIO m, Ord k, b `Has` (Map k a)) => (Removable k a) (ReaderT (IORef b) m) where
   remove = delete
