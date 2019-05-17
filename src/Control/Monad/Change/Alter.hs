@@ -76,6 +76,12 @@ class (Ord k, Monad f) => Alters k a f where
   alter_ :: Proxy a -> k -> (Maybe a -> f (Maybe a)) -> f ()
   alter_ p k = void . alter p k
 
+  lookupWithDefault :: Default a => Proxy a -> k -> f a
+  lookupWithDefault p k = fromMaybe def <$> lookup p k
+
+  lookupWithMempty :: Monoid a => Proxy a -> k -> f a
+  lookupWithMempty p k = fromMaybe mempty <$> lookup p k
+
   update :: Proxy a -> k -> (a -> f (Maybe a)) -> f (Maybe a)
   update p k f = alter p k $ \case
     Just a -> f a
@@ -163,6 +169,12 @@ instance {-# OVERLAPPABLE #-} (MonadIO m, Ord k, (k `Maps` a) b) => (k `Alters` 
 
 class Selectable k a f where
   select :: Proxy a -> k -> f (Maybe a)
+
+  selectWithDefault :: (Default a, Functor f) => Proxy a -> k -> f a
+  selectWithDefault p k = fromMaybe def <$> select p k
+
+  selectWithMempty :: (Monoid a, Functor f) => Proxy a -> k -> f a
+  selectWithMempty p k = fromMaybe mempty <$> select p k
 
 instance (Monad m, Ord k, b `Has` (Map k a)) => (Selectable k a) (StateT b m) where
   select = lookup
