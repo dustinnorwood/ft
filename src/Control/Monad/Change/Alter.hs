@@ -134,6 +134,9 @@ class (Ord k, Monad f) => Alters k a f where
   repsert_ :: Proxy a -> k -> (Maybe a -> f a) -> f ()
   repsert_ p k = void . repsert p k
 
+  exists :: Proxy a -> k -> f Bool
+  exists p k = isJust <$> lookup p k
+
 
 
 class Maps k a b where
