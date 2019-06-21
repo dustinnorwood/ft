@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module Control.Monad.Change.Modify
@@ -22,44 +23,44 @@ import           Control.Monad.Trans.State        (execStateT, StateT)
 import           Data.Proxy
 
 class Monad f => Modifiable a f where
-  modify :: Proxy a -> (a -> f a) -> f a
-  modify p f = get p >>= f >>= \a -> put p a >> return a
+  modify :: (a -> f a) -> f a
+  modify f = get >>= f >>= \a -> put a >> return a
 
-  get :: Proxy a -> f a
-  get p = modify p pure
+  get :: f a
+  get = modify pure
 
-  put :: Proxy a -> a -> f ()
-  put p a = modify_ p (pure . const a)
+  put :: a -> f ()
+  put a = modify_ (pure . const a)
 
   {-# MINIMAL modify | get, put #-}
 
-  modify_ :: Proxy a -> (a -> f a) -> f ()
-  modify_ p = void . modify p
+  modify_ :: (a -> f a) -> f ()
+  modify_ = void . modify
 
-  modifyStatefully :: Proxy a -> StateT a f () -> f a
-  modifyStatefully p = modify p . execStateT
+  modifyStatefully :: StateT a f () -> f a
+  modifyStatefully = modify . execStateT
 
-  modifyStatefully_ :: Proxy a -> StateT a f () -> f ()
-  modifyStatefully_ p = void . modifyStatefully p
+  modifyStatefully_ :: StateT a f () -> f ()
+  modifyStatefully_ = void . modifyStatefully
 
 
 
 class Has b a where
-  this :: Proxy a -> Lens' b a
+  this :: Lens' b a
 
 instance a `Has` a where
-  this _ = lens id (const id)
+  this = lens id (const id)
 
 instance (Identity a) `Has` a where
-  this _ = lens runIdentity (const Identity)
+  this = lens runIdentity (const Identity)
 
 
 
 class Accessible a f where
-  access :: Proxy a -> f a
+  access :: f a
 
-accesses :: (Functor f, Accessible a f) => Proxy a -> (a -> b) -> f b
-accesses = flip fmap . access
+accesses :: (Functor f, Accessible a f) => (a -> b) -> f b
+accesses = flip fmap access
 
 class Inputs f a where
   input :: f a
