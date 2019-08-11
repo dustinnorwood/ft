@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module Control.Monad.Change.Modify
@@ -12,11 +14,13 @@ module Control.Monad.Change.Modify
   , inputs
   , Outputs(..)
   , genericOutputsStringIO
+  , Awaits(..)
+  , Yields(..)
   , module Data.Proxy
   ) where
 
 import           Control.Lens
-import           Control.Monad                    (void)
+import           Control.Monad                    (void, mapM_)
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.State        (execStateT, StateT)
 import           Data.Proxy
@@ -72,3 +76,19 @@ class Outputs f a where
 
 genericOutputsStringIO :: MonadIO m => String -> m ()
 genericOutputsStringIO = liftIO . putStrLn
+
+class Awaits f a where
+  await :: f (Maybe a)
+  {-# MINIMAL await #-}
+
+  awaitForever :: Monad f => (a -> f ()) -> f ()
+  awaitForever f = await >>= \case
+    Nothing -> return ()
+    Just a -> f a >> awaitForever f
+
+class Yields f a where
+  yield :: a -> f ()
+  {-# MINIMAL yield #-}
+
+  yieldMany :: Monad f => [a] -> f ()
+  yieldMany = mapM_ yield
