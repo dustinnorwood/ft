@@ -1,3 +1,4 @@
+{-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -80,7 +81,7 @@ import           Data.Proxy
   `updateInt` and `updateString`, we'd have to call `get` in both, because we'd have to retrieve the
   other half of the state to preserve it.
 -}
-class Monad f => Modifiable a f where
+class Modifiable a f where
   {- modify
      The most general function that can be applied to a State-like monad.
      Apply an effectful function to a state value `a`, and return the new value.
@@ -89,18 +90,21 @@ class Monad f => Modifiable a f where
      efficient implementation for the underlying monad.
   -}
   modify :: Proxy a -> (a -> f a) -> f a
+  default modify :: Monad f => Proxy a -> (a -> f a) -> f a
   modify p f = get p >>= f >>= \a -> put p a >> return a
 
   {- get
      Get a state value `a` from the underlying monad `f`.
   -}
   get :: Proxy a -> f a
+  default get :: Applicative f => Proxy a -> f a
   get p = modify p pure
 
   {- put
      Put a state value `a` into the underlying monad `f`.
   -}
   put :: Proxy a -> a -> f ()
+  default put :: Applicative f => Proxy a -> a -> f ()
   put p a = modify_ p (pure . const a)
 
   {-# MINIMAL modify | get, put #-}
@@ -109,6 +113,7 @@ class Monad f => Modifiable a f where
      The same as `modify`, but ignore the return value.
   -}
   modify_ :: Proxy a -> (a -> f a) -> f ()
+  default modify_ :: Functor f => Proxy a -> (a -> f a) -> f ()
   modify_ p = void . modify p
 
   {- modifyStatefully
@@ -117,12 +122,14 @@ class Monad f => Modifiable a f where
      lenses to operate on specific fields in the record type.
   -}
   modifyStatefully :: Proxy a -> StateT a f () -> f a
+  default modifyStatefully :: Monad f => Proxy a -> StateT a f () -> f a
   modifyStatefully p = modify p . execStateT
 
   {- modifyStatefully_
      The same as `modify`, but ignore the return value.
   -}
   modifyStatefully_ :: Proxy a -> StateT a f () -> f ()
+  default modifyStatefully_ :: Functor f => Proxy a -> StateT a f () -> f ()
   modifyStatefully_ p = void . modifyStatefully p
 
 

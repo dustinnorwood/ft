@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
@@ -22,6 +23,7 @@ import           Control.Monad
 import           Control.Monad.Change.Modify
 import           Control.Monad.Trans.State   (evalStateT, execStateT, StateT)
 import           Data.Default
+import           Data.Foldable               (traverse_)
 import qualified Data.IntMap                 as IM
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict             as M
@@ -62,7 +64,7 @@ import           Prelude                     hiding (lookup)
   that data. This is why all of the functions in the Alters typeclass are inside the class, rather
   than top-level functions with an `Alters` constraint.
 -}
-class (Ord k, Monad f) => Alters k a f where
+class Alters k a f where
 
   {- alter
      The most general function that can be applied to a Map-like structure.
@@ -78,6 +80,7 @@ class (Ord k, Monad f) => Alters k a f where
          sense to define `alter` in terms of `lookup`, `insert`, and `delete`.
   -}
   alter :: Proxy a -> k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
+  default alter :: (Monad f) => Proxy a -> k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
   alter p k f = do
     ma <- lookup p k
     ma' <- f ma
@@ -90,18 +93,21 @@ class (Ord k, Monad f) => Alters k a f where
      Lookup the corresponding value for a given key `k` in the underlying monad `f`
   -}
   lookup :: Proxy a -> k -> f (Maybe a)
+  default lookup :: Applicative f => Proxy a -> k -> f (Maybe a)
   lookup p k = alter p k pure
 
   {- insert
      Insert the corresponding key/value pair in the underlying monad `f`
   -}
   insert :: Proxy a -> k -> a -> f ()
+  default insert :: Applicative f => Proxy a -> k -> a -> f ()
   insert p k a = alter_ p k $ pure . const (Just a)
 
   {- delete
      Delete the corresponding entry for the key `k` in the underlying monad `f`
   -}
   delete :: Proxy a -> k -> f ()
+  default delete :: Applicative f => Proxy a -> k -> f ()
   delete p k = alter_ p k $ pure . const Nothing
 
   {-# MINIMAL alter
@@ -113,6 +119,7 @@ class (Ord k, Monad f) => Alters k a f where
      The default instance is a combination of `{lookup, insert, delete}Many`.
   -}
   alterMany :: Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f (Map k a)
+  default alterMany :: (Ord k, Monad f) => Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f (Map k a)
   alterMany p ks f = do
     m <- lookupMany p ks
     m' <- f m
@@ -125,32 +132,37 @@ class (Ord k, Monad f) => Alters k a f where
      underlying monad `f`. The default instance is implemented as the list version of `lookup`.
   -}
   lookupMany :: Proxy a -> [k] -> f (Map k a)
-  lookupMany p ks = M.fromList . catMaybes <$> forM ks (\k -> fmap (k,) <$> lookup p k)
+  default lookupMany :: (Ord k, Applicative f) => Proxy a -> [k] -> f (Map k a)
+  lookupMany p = fmap (M.fromList . catMaybes) . traverse (\k -> fmap (k,) <$> lookup p k)
 
   {- insertMany
      Take a `Map k a`, and insert/overwrite its entries in the underlying monad `f`.
      The default instance is implemented as the list version of `insert`.
   -}
   insertMany :: Proxy a -> Map k a -> f ()
-  insertMany p m = forM_ (M.assocs m) . uncurry $ insert p
+  default insertMany :: Applicative f => Proxy a -> Map k a -> f ()
+  insertMany p = traverse_ (uncurry $ insert p) . M.assocs
 
   {- deleteMany
      Take a list of keys, and delete the corresponding entries in the underlying monad `f`.
      The default instance is implemented as the list version of `delete`.
   -}
   deleteMany :: Proxy a -> [k] -> f ()
-  deleteMany p ks = forM_ ks $ delete p
+  default deleteMany :: Applicative f => Proxy a -> [k] -> f ()
+  deleteMany p = traverse_ $ delete p
 
   {- alterMany_
      Same as `alterMany` except it discards the return value.
   -}
   alterMany_ :: Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f ()
+  default alterMany_ :: Functor f => Proxy a -> [k] -> (Map k a -> f (Map k a)) -> f ()
   alterMany_ p ks = void . alterMany p ks
 
   {- alter_
      Same as `alter` except it discards the return value.
   -}
   alter_ :: Proxy a -> k -> (Maybe a -> f (Maybe a)) -> f ()
+  default alter_ :: Functor f => Proxy a -> k -> (Maybe a -> f (Maybe a)) -> f ()
   alter_ p k = void . alter p k
 
   {- lookupWithDefault
@@ -158,7 +170,8 @@ class (Ord k, Monad f) => Alters k a f where
      and return `def` if the entry for key `k` is not found.
      Requires a `Default` instance on the value type `a`.
   -}
-  lookupWithDefault :: Default a => Proxy a -> k -> f a
+  lookupWithDefault :: Proxy a -> k -> f a
+  default lookupWithDefault :: (Default a, Functor f) => Proxy a -> k -> f a
   lookupWithDefault p k = fromMaybe def <$> lookup p k
 
   {- lookupWithMempty
@@ -167,6 +180,7 @@ class (Ord k, Monad f) => Alters k a f where
      Requires a `Monoid` instance on the value type `a`.
   -}
   lookupWithMempty :: Monoid a => Proxy a -> k -> f a
+  default lookupWithMempty :: (Monoid a, Functor f) => Proxy a -> k -> f a
   lookupWithMempty p k = fromMaybe mempty <$> lookup p k
 
   {- update
@@ -176,6 +190,7 @@ class (Ord k, Monad f) => Alters k a f where
      the underlying monad.
   -}
   update :: Proxy a -> k -> (a -> f (Maybe a)) -> f (Maybe a)
+  default update :: Applicative f => Proxy a -> k -> (a -> f (Maybe a)) -> f (Maybe a)
   update p k f = alter p k $ \case
     Just a -> f a
     Nothing -> pure Nothing
@@ -184,6 +199,7 @@ class (Ord k, Monad f) => Alters k a f where
      Same as `update` except it discards the return value.
   -}
   update_ :: Proxy a -> k -> (a -> f (Maybe a)) -> f ()
+  default update_ :: Functor f => Proxy a -> k -> (a -> f (Maybe a)) -> f ()
   update_ p k = void . update p k
 
   {- updateStatefully
@@ -192,12 +208,14 @@ class (Ord k, Monad f) => Alters k a f where
      lenses to operate on specific fields in the record type.
   -}
   updateStatefully :: Proxy a -> k -> StateT a f (Maybe a) -> f (Maybe a)
+  default updateStatefully :: Monad f => Proxy a -> k -> StateT a f (Maybe a) -> f (Maybe a)
   updateStatefully p k = update p k . evalStateT
 
   {- updateStatefully_
      Same as `updateStatefully` except it discards the return value.
   -}
   updateStatefully_ :: Proxy a -> k -> StateT a f (Maybe a) -> f ()
+  default updateStatefully_ :: Functor f => Proxy a -> k -> StateT a f (Maybe a) -> f ()
   updateStatefully_ p k = void . updateStatefully p k
 
   {- adjust
@@ -208,12 +226,14 @@ class (Ord k, Monad f) => Alters k a f where
      `adjust`.
   -}
   adjust :: Proxy a -> k -> (a -> f a) -> f a
-  adjust p k f = fmap fromJust $ update p k (fmap Just . f)
+  default adjust :: Functor f => Proxy a -> k -> (a -> f a) -> f a
+  adjust p k f = fromJust <$> update p k (fmap Just . f)
 
   {- adjust_
      Same as `adjust` except it discards the return value.
   -}
   adjust_ :: Proxy a -> k -> (a -> f a) -> f ()
+  default adjust_ :: Functor f => Proxy a -> k -> (a -> f a) -> f ()
   adjust_ p k = void . adjust p k
 
   {- adjustStatefully
@@ -222,12 +242,14 @@ class (Ord k, Monad f) => Alters k a f where
      lenses to operate on specific fields in the record type.
   -}
   adjustStatefully :: Proxy a -> k -> StateT a f () -> f a
+  default adjustStatefully :: Monad f => Proxy a -> k -> StateT a f () -> f a
   adjustStatefully p k = adjust p k . execStateT
 
   {- adjustStatefully_
      Same as `adjustStatefully` except it discards the return value.
   -}
   adjustStatefully_ :: Proxy a -> k -> StateT a f () -> f ()
+  default adjustStatefully_ :: Functor f => Proxy a -> k -> StateT a f () -> f ()
   adjustStatefully_ p k = void . adjustStatefully p k
 
   {- adjustWithDefault
@@ -237,14 +259,16 @@ class (Ord k, Monad f) => Alters k a f where
      in the underlying monad after calling `adjustWithDefault`.
      Requires a `Default` instance on the value type `a`.
   -}
-  adjustWithDefault :: Default a => Proxy a -> k -> (a -> f a) -> f a
-  adjustWithDefault p k f = fmap fromJust $ alter p k (fmap Just . f . fromMaybe def)
+  adjustWithDefault :: Proxy a -> k -> (a -> f a) -> f a
+  default adjustWithDefault :: (Default a, Functor f) => Proxy a -> k -> (a -> f a) -> f a
+  adjustWithDefault p k f = fromJust <$> alter p k (fmap Just . f . fromMaybe def)
 
   {- adjustWithDefault_
      Same as `adjustWithDefault` except it discards the return value.
      Requires a `Default` instance on the value type `a`.
   -}
-  adjustWithDefault_ :: Default a => Proxy a -> k -> (a -> f a) -> f ()
+  adjustWithDefault_ :: Proxy a -> k -> (a -> f a) -> f ()
+  default adjustWithDefault_ :: Functor f => Proxy a -> k -> (a -> f a) -> f ()
   adjustWithDefault_ p k = void . adjustWithDefault p k
 
   {- adjustWithDefaultStatefully
@@ -253,14 +277,16 @@ class (Ord k, Monad f) => Alters k a f where
      lenses to operate on specific fields in the record type.
      Requires a `Default` instance on the value type `a`.
   -}
-  adjustWithDefaultStatefully :: Default a => Proxy a -> k -> StateT a f () -> f a
+  adjustWithDefaultStatefully :: Proxy a -> k -> StateT a f () -> f a
+  default adjustWithDefaultStatefully :: Monad f => Proxy a -> k -> StateT a f () -> f a
   adjustWithDefaultStatefully p k = adjustWithDefault p k . execStateT
 
   {- adjustWithDefaultStatefully_
      Same as `adjustWithDefaultStatefully` except it discards the return value.
      Requires a `Default` instance on the value type `a`.
   -}
-  adjustWithDefaultStatefully_ :: Default a => Proxy a -> k -> StateT a f () -> f ()
+  adjustWithDefaultStatefully_ :: Proxy a -> k -> StateT a f () -> f ()
+  default adjustWithDefaultStatefully_ :: Functor f => Proxy a -> k -> StateT a f () -> f ()
   adjustWithDefaultStatefully_ p k = void . adjustWithDefaultStatefully p k
 
   {- adjustWithMempty
@@ -270,14 +296,16 @@ class (Ord k, Monad f) => Alters k a f where
      in the underlying monad after calling `adjustWithMempty`.
      Requires a `Monoid` instance on the value type `a`.
   -}
-  adjustWithMempty :: Monoid a => Proxy a -> k -> (a -> f a) -> f a
-  adjustWithMempty p k f = fmap fromJust $ alter p k (fmap Just . f . fromMaybe mempty)
+  adjustWithMempty :: Proxy a -> k -> (a -> f a) -> f a
+  default adjustWithMempty :: (Monoid a, Functor f) => Proxy a -> k -> (a -> f a) -> f a
+  adjustWithMempty p k f = fromJust <$> alter p k (fmap Just . f . fromMaybe mempty)
 
   {- adjustWithMempty_
      Same as `adjustWithMempty` except it discards the return value.
      Requires a `Monoid` instance on the value type `a`.
   -}
-  adjustWithMempty_ :: Monoid a => Proxy a -> k -> (a -> f a) -> f ()
+  adjustWithMempty_ :: Proxy a -> k -> (a -> f a) -> f ()
+  default adjustWithMempty_ :: Functor f => Proxy a -> k -> (a -> f a) -> f ()
   adjustWithMempty_ p k = void . adjustWithMempty p k
 
   {- adjustWithMemptyStatefully
@@ -286,7 +314,8 @@ class (Ord k, Monad f) => Alters k a f where
      lenses to operate on specific fields in the record type.
      Requires a `Monoid` instance on the value type `a`.
   -}
-  adjustWithMemptyStatefully :: Monoid a => Proxy a -> k -> StateT a f () -> f a
+  adjustWithMemptyStatefully :: Proxy a -> k -> StateT a f () -> f a
+  default adjustWithMemptyStatefully :: Monad f => Proxy a -> k -> StateT a f () -> f a
   adjustWithMemptyStatefully p k = adjustWithMempty p k . execStateT
 
   {- adjustWithMemptyStatefully_
@@ -294,6 +323,7 @@ class (Ord k, Monad f) => Alters k a f where
      Requires a `Monoid` instance on the value type `a`.
   -}
   adjustWithMemptyStatefully_ :: Monoid a => Proxy a -> k -> StateT a f () -> f ()
+  default adjustWithMemptyStatefully_ :: Functor f => Proxy a -> k -> StateT a f () -> f ()
   adjustWithMemptyStatefully_ p k = void . adjustWithMemptyStatefully p k
 
   {- repsert
@@ -304,12 +334,14 @@ class (Ord k, Monad f) => Alters k a f where
      monad `f`.
   -}
   repsert :: Proxy a -> k -> (Maybe a -> f a) -> f a
-  repsert p k f = fmap fromJust $ alter p k (fmap Just . f)
+  default repsert :: Functor f => Proxy a -> k -> (Maybe a -> f a) -> f a
+  repsert p k f = fromJust <$> alter p k (fmap Just . f)
 
   {- repsert_
      Same as `repsert` except it discards the return value.
   -}
   repsert_ :: Proxy a -> k -> (Maybe a -> f a) -> f ()
+  default repsert_ :: Functor f => Proxy a -> k -> (Maybe a -> f a) -> f ()
   repsert_ p k = void . repsert p k
 
   {- exists
@@ -319,6 +351,7 @@ class (Ord k, Monad f) => Alters k a f where
      utilizing this capability can be substantially more performant for large values.
   -}
   exists :: Proxy a -> k -> f Bool
+  default exists :: Functor f => Proxy a -> k -> f Bool
   exists p k = isJust <$> lookup p k
 
 
@@ -348,20 +381,22 @@ instance b `Has` (IM.IntMap a) => (Int `Maps` a) b where
   Use this typeclass instead of `Alters` when `lookup` functionality is all that is needed.
   TODO: implement an `exists` equivalent for `Selectable`.
 -}
-class (Ord k, Monad f) => Selectable k a f where
+class Selectable k a f where
   {- selectMany
      Take a list of keys, and return a `Map k a` of the keys and their values existing in the
      underlying monad `f`.
      This function is analogous to the `lookupMany` function in `Alters`.
   -}
   selectMany :: Proxy a -> [k] -> f (Map k a)
-  selectMany p ks = M.fromList . catMaybes <$> forM ks (\k -> fmap (k,) <$> select p k)
+  default selectMany :: (Ord k, Applicative f) => Proxy a -> [k] -> f (Map k a)
+  selectMany p = fmap (M.fromList . catMaybes) . traverse (\k -> fmap (k,) <$> select p k)
 
   {- select
      Lookup the corresponding value for a given key `k` in the underlying monad `f`
      This function is analogous to the `lookup` function in `Alters`
   -}
   select :: Proxy a -> k -> f (Maybe a)
+  default select :: (Ord k, Functor f) => Proxy a -> k -> f (Maybe a)
   select p k = M.lookup k <$> selectMany p [k]
 
   {-# MINIMAL selectMany | select #-}
@@ -372,7 +407,8 @@ class (Ord k, Monad f) => Selectable k a f where
      Requires a `Default` instance on the value type `a`.
      This function is analogous to the `lookupWithDefault` function in `Alters`
   -}
-  selectWithDefault :: (Default a, Functor f) => Proxy a -> k -> f a
+  selectWithDefault :: Proxy a -> k -> f a
+  default selectWithDefault :: (Default a, Functor f) => Proxy a -> k -> f a
   selectWithDefault p k = fromMaybe def <$> select p k
 
   {- selectWithMempty
@@ -381,7 +417,8 @@ class (Ord k, Monad f) => Selectable k a f where
      Requires a `Monoid` instance on the value type `a`.
      This function is analogous to the `lookupWithMempty` function in `Alters`
   -}
-  selectWithMempty :: (Monoid a, Functor f) => Proxy a -> k -> f a
+  selectWithMempty :: Proxy a -> k -> f a
+  default selectWithMempty :: (Monoid a, Functor f) => Proxy a -> k -> f a
   selectWithMempty p k = fromMaybe mempty <$> select p k
 
 {- The Replaceable Typeclass
