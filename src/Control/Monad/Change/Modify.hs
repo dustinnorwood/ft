@@ -3,28 +3,18 @@
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module Control.Monad.Change.Modify
   ( Modifiable(..)
-  , Has(..)
-  , Accessible(..)
-  , accesses
-  , Inputs(..)
-  , inputs
-  , Outputs(..)
-  , genericOutputsStringIO
-  , Awaits(..)
-  , Yields(..)
-  , module Data.Proxy
   ) where
 
-import           Control.Lens
 import           Control.Monad                    (void, mapM_)
-import           Control.Monad.IO.Class
-import           Control.Monad.Trans.State        (execStateT, StateT)
-import           Data.Proxy
+import           Control.Monad.Change.Get
+import           Control.Monad.Change.Put
+import           Control.Monad.Trans.State        (execStateT, runStateT, StateT)
 
 {- The Modifiable Typeclass
   `Modifiable a f` is a typeclass used to generalize Control.Monad.State-like functions to any monad f.
@@ -81,122 +71,77 @@ import           Data.Proxy
   `updateInt` and `updateString`, we'd have to call `get` in both, because we'd have to retrieve the
   other half of the state to preserve it.
 -}
-class Modifiable a f where
-  {- modify
+class ( Gettable a f
+      , Puttable a f
+      )
+     => Modifiable a f where
+  {- modifyReturning
      The most general function that can be applied to a State-like monad.
      Apply an effectful function to a state value `a`, and return the new value.
-     From `modify`, we can derive every other function in the `Modifiable` typeclass.
-     However, for many cases, defining `modify` by itself is not the most
+     From `modifyReturning`, we can derive every other function in the `Modifiable` typeclass.
+     However, for many cases, defining `modifyReturning` by itself is not the most
      efficient implementation for the underlying monad.
   -}
-  modify :: Proxy a -> (a -> f a) -> f a
-  default modify :: Monad f => Proxy a -> (a -> f a) -> f a
-  modify p f = get p >>= f >>= \a -> put p a >> return a
+  modifyReturning :: (a -> f (b, a)) -> f b
+  default modifyReturning :: Monad f => (a -> f (b, a)) -> f b
+  modifyReturning f = get >>= f >>= \ba -> put (snd ba) >> return (fst ba)
 
-  {- get
-     Get a state value `a` from the underlying monad `f`.
+  {- modify
+     Version of modifyReturning that returns the result of the modification function.
   -}
-  get :: Proxy a -> f a
-  default get :: Applicative f => Proxy a -> f a
-  get p = modify p pure
+  modify :: (a -> f a) -> f a
+  default modify :: Monad f => (a -> f a) -> f a
+  modify f = modifyReturning (fmap (\a -> (a, a)) . f)
 
-  {- put
-     Put a state value `a` into the underlying monad `f`.
+  {- modifyReturningPure
+     Version of modifyReturning that takes a pure function instead of an effectful function.
   -}
-  put :: Proxy a -> a -> f ()
-  default put :: Applicative f => Proxy a -> a -> f ()
-  put p a = modify_ p (pure . const a)
+  modifyReturningPure :: (a -> (b, a)) -> f b
+  default modifyReturningPure :: Monad f => (a -> (b, a)) -> f b
+  modifyReturningPure f = modifyReturning (pure . f)
 
-  {-# MINIMAL modify | get, put #-}
+  {- modifyPure
+     Version of modify that takes a pure function instead of an effectful function.
+  -}
+  modifyPure :: (a -> a) -> f a
+  default modifyPure :: Monad f => (a -> a) -> f a
+  modifyPure f = modify (pure . f)
 
   {- modify_
      The same as `modify`, but ignore the return value.
   -}
-  modify_ :: Proxy a -> (a -> f a) -> f ()
-  default modify_ :: Functor f => Proxy a -> (a -> f a) -> f ()
-  modify_ p = void . modify p
+  modify_ :: (a -> f a) -> f ()
+  default modify_ :: Functor f => (a -> f a) -> f ()
+  modify_ = void . modify
+
+  {- modifyPure_
+     The same as `modify`, but ignore the return value.
+  -}
+  modifyPure_ :: (a -> a) -> f ()
+  default modifyPure_ :: Functor f => (a -> a) -> f ()
+  modifyPure_ = void . modifyPure
+
+  {- modifyReturningStatefully
+     Same as `modifyReturing`, but run in a stateful context.
+     This is useful when applying complex functions to the value, especially when the using
+     lenses to operate on specific fields in the record type.
+  -}
+  modifyReturningStatefully :: StateT a f b -> f b
+  default modifyReturningStatefully :: Monad f => StateT a f b -> f b
+  modifyReturningStatefully = modifyReturning . runStateT
 
   {- modifyStatefully
      Same as `modify`, but run in a stateful context.
      This is useful when applying complex functions to the value, especially when the using
      lenses to operate on specific fields in the record type.
   -}
-  modifyStatefully :: Proxy a -> StateT a f () -> f a
-  default modifyStatefully :: Monad f => Proxy a -> StateT a f () -> f a
-  modifyStatefully p = modify p . execStateT
+  modifyStatefully :: StateT a f () -> f a
+  default modifyStatefully :: Monad f => StateT a f () -> f a
+  modifyStatefully = modify . execStateT
 
   {- modifyStatefully_
      The same as `modify`, but ignore the return value.
   -}
-  modifyStatefully_ :: Proxy a -> StateT a f () -> f ()
-  default modifyStatefully_ :: Functor f => Proxy a -> StateT a f () -> f ()
-  modifyStatefully_ p = void . modifyStatefully p
-
-
-
-class Has b a where
-  this :: Proxy a -> Lens' b a
-
-instance a `Has` a where
-  this _ = lens id (const id)
-
-instance (Identity a) `Has` a where
-  this _ = lens runIdentity (const Identity)
-
-
-
-{- The Accessible Typeclass
-  `Accessible a f` is a typeclass used to generalize the Control.Monad.State function
-  `get` to any monad f.
-  The class has two type parameters:
-    a - the value type, like the `s` in `State s a`
-    f - the underlying monad, such as `State s a`
-  Use this typeclass instead of `Modifiable` when `get` functionality is all that is needed.
--}
-class Accessible a f where
-  access :: Proxy a -> f a
-
-accesses :: (Functor f, Accessible a f) => Proxy a -> (a -> b) -> f b
-accesses = flip fmap . access
-
-class Inputs f a where
-  input :: f a
-
-inputs :: (Functor f, Inputs f a) => (a -> b) -> f b
-inputs f = f <$> input
-
-class Outputs f a where
-  output :: a -> f ()
-
-genericOutputsStringIO :: MonadIO m => String -> m ()
-genericOutputsStringIO = liftIO . putStrLn
-
-{- The Awaits Typeclass
-  (f `Awaits` a) is a typeclass used to generalize the `await` function from streaming
-  libraries like Pipes and Conduit to any monad f.
-  The class has two type parameters:
-    f - the underlying monad, such as `ConduitT i o m r`
-    a - the value type being awaited, like the `i` in `ConduitT i o m r`
--}
-class Awaits f a where
-  await :: f (Maybe a)
-  {-# MINIMAL await #-}
-
-  awaitForever :: Monad f => (a -> f ()) -> f ()
-  awaitForever f = await >>= \case
-    Nothing -> return ()
-    Just a -> f a >> awaitForever f
-
-{- The Yields Typeclass
-  (f `Yields` a) is a typeclass used to generalize the `yield` function from streaming
-  libraries like Pipes and Conduit to any monad f.
-  The class has two type parameters:
-    f - the underlying monad, such as `ConduitT i o m r`
-    a - the value type being awaited, like the `o` in `ConduitT i o m r`
--}
-class Yields f a where
-  yield :: a -> f ()
-  {-# MINIMAL yield #-}
-
-  yieldMany :: Monad f => [a] -> f ()
-  yieldMany = mapM_ yield
+  modifyStatefully_ :: StateT a f () -> f ()
+  default modifyStatefully_ :: Functor f => StateT a f () -> f ()
+  modifyStatefully_ = void . modifyStatefully
