@@ -18,8 +18,6 @@ module Control.Monad.Change.Lookup
 
 import           Control.Monad
 import           Data.Default
-import           Data.Map.Strict             (Map)
-import qualified Data.Map.Strict             as M
 import           Data.Maybe
 import           Prelude                     hiding (lookup)
 
@@ -37,15 +35,15 @@ class Lookupable a k f where
   -}
   lookup :: k -> f (Maybe a)
   default lookup :: (Ord k, Functor f) => k -> f (Maybe a)
-  lookup k = M.lookup k <$> lookupMany [k]
+  lookup k = join . listToMaybe . map snd <$> lookupMany [k]
 
   {- lookupMany
-     Take a list of keys, and return a `Map k a` of the keys and their values existing in the
+     Take a list of keys, and return a `[(k, Maybe a)]` of the keys and their values existing in the
      underlying type constructor `f`.
   -}
-  lookupMany :: [k] -> f (Map k a)
-  default lookupMany :: (Ord k, Applicative f) => [k] -> f (Map k a)
-  lookupMany = fmap (M.fromList . catMaybes) . traverse (\k -> fmap (k,) <$> lookup k)
+  lookupMany :: [k] -> f [(k, Maybe a)]
+  default lookupMany :: (Ord k, Applicative f) => [k] -> f [(k, Maybe a)]
+  lookupMany = traverse (\k -> (k,) <$> lookup k)
 
   {-# MINIMAL lookup | lookupMany #-}
 

@@ -24,10 +24,10 @@ import           Control.Monad.Change.Lookup
 import           Control.Monad.Trans.State   (evalStateT, execStateT, StateT)
 import           Data.Default
 import           Data.Foldable               (traverse_)
-import           Data.Map.Strict             (Map)
-import qualified Data.Map.Strict             as M
 import           Data.Maybe
 import           Prelude                     hiding (lookup)
+
+type M k a = [(k, Maybe a)]
 
 {- The Alterable Typeclass
   Alterable a k f is a typeclass used to generalize Data.Map-like functions to any type constructor f.
@@ -68,41 +68,73 @@ class ( Lookupable a k f
       )
      => Alterable  a k f where
 
-  {- alter
+  {- alterManyReturing
      The most general function that can be applied to a Map-like structure.
-     Apply an effectful function to a `Maybe a`, which represents a value that may or may not
-     exist in a `Map k a`, at a given key `k`, and return a `Maybe a`, which represents whether
-     to insert the new value in the Map. From `alter`, we can derive every other function in the
-     `Alterable` typeclass. However, for many cases, defining `alter` by itself is not the most
-     efficient implementation for the underlying monad. The default instance is implemented as
-     a combination of `lookup`, `insert`, and `delete`, but could also be implemented as
-     the singleton case of `alterMany`.
-     NB: Since most monads implement `Alterable` only using `lookup`, `insert`, and `delete`,
-         and all of the compound functions are defined in terms of `alter`, it only makes
-         sense to define `alter` in terms of `lookup`, `insert`, and `delete`.
+     Apply an effectful function to a `[(k, Maybe a)]`, which represents values that
+     exist in a `Map k a`, at a given key `k`, and return a `(b, [(k, Maybe a)])`, which represents whether
+     to insert the new values in the Map, along with a return value of arbitrary type.
+     From `alterManyReturning`, we can derive every other function in the `Alterable` typeclass.
+     However, for many cases, defining `alterManyReturning` by itself is not the most
+     efficient implementation for the underlying monad.
+  -}
+  alterManyReturning :: [k] -> (M k a -> f (b, M k a)) -> f b
+  default alterManyReturning :: Monad f => [k] -> (M k a -> f (b, M k a)) -> f b
+  alterManyReturning ks f = do
+    m <- lookupMany ks
+    ~(b, m') <- f m
+    deleteMany @a $ fst <$> filter (isNothing . snd) m'
+    insertMany . catMaybes $ sequence <$> m'
+    return b
+
+  {- alterMany
+     A version of `alterManyReturning` that returns the result of the operation
+  -}
+  alterMany :: [k] -> (M k a -> f (M k a)) -> f (M k a)
+  default alterMany :: Monad f => [k] -> (M k a -> f (M k a)) -> f (M k a)
+  alterMany ks f = alterManyReturning ks (fmap (\a -> (a,a)) . f)
+
+  {- alterManyReturningPure
+     A version of `alterManyReturning` that takes a pure function
+  -}
+  alterManyReturningPure :: [k] -> (M k a -> (b, M k a)) -> f b
+  default alterManyReturningPure :: Monad f => [k] -> (M k a -> (b, M k a)) -> f b
+  alterManyReturningPure ks f = alterManyReturning ks (pure . f)
+
+  {- alterManyPure
+     A version of `alterMany` that takes a pure function
+  -}
+  alterManyPure :: [k] -> (M k a -> M k a) -> f (M k a)
+  default alterManyPure :: Monad f => [k] -> (M k a -> M k a) -> f (M k a)
+  alterManyPure ks f = alterMany ks (pure . f)
+
+  {- alterReturning
+  -}
+  alterReturning :: k -> (Maybe a -> f (b, Maybe a)) -> f b
+  default alterReturning :: Monad f => k -> (Maybe a -> f (b, Maybe a)) -> f b
+  alterReturning k f = alterManyReturning [k] $ \m -> do
+    ~(b, ma) <- f . join . listToMaybe $ snd <$> m 
+    pure (b, [(k, ma)])
+
+  {- alter
+     A version of `alterReturning` that returns the result of the operation
   -}
   alter :: k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
   default alter :: (Monad f) => k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
-  alter k f = do
-    ma <- lookup k
-    ma' <- f ma
-    case ma' of
-      Just a -> insert k a
-      Nothing -> when (isJust ma) $ delete @a k
-    return ma'
+  alter k f = alterReturning k (fmap (\a -> (a,a)) . f)
 
-  {- alterMany
-     Apply an effectful function to a `Map k a`, and return the new Map.
-     The default instance is a combination of `{lookup, insert, delete}Many`.
+  {- alterReturningPure
+     A version of `alterReturning` that takes a pure function
   -}
-  alterMany :: [k] -> (Map k a -> f (Map k a)) -> f (Map k a)
-  default alterMany :: (Ord k, Monad f) => [k] -> (Map k a -> f (Map k a)) -> f (Map k a)
-  alterMany ks f = do
-    m <- lookupMany ks
-    m' <- f m
-    deleteMany @a . M.keys $ m M.\\ m'
-    insertMany m'
-    return m'
+  alterReturningPure :: k -> (Maybe a -> (b, Maybe a)) -> f b
+  default alterReturningPure :: (Monad f) => k -> (Maybe a -> (b, Maybe a)) -> f b
+  alterReturningPure k f = alterReturning k (pure . f)
+
+  {- alterPure
+     A version of `alter` that takes a pure function
+  -}
+  alterPure :: k -> (Maybe a -> Maybe a) -> f (Maybe a)
+  default alterPure :: (Monad f) => k -> (Maybe a -> Maybe a) -> f (Maybe a)
+  alterPure k f = alter k (pure . f)
 
   {- alter_
      Same as `alter` except it discards the return value.
@@ -111,12 +143,26 @@ class ( Lookupable a k f
   default alter_ :: Functor f => k -> (Maybe a -> f (Maybe a)) -> f ()
   alter_ k = void . alter k
 
+  {- alterPure_
+     Same as `alterPure` except it discards the return value.
+  -}
+  alterPure_ :: k -> (Maybe a -> Maybe a) -> f ()
+  default alterPure_ :: Functor f => k -> (Maybe a -> Maybe a) -> f ()
+  alterPure_ k = void . alterPure k
+
   {- alterMany_
      Same as `alterMany` except it discards the return value.
   -}
-  alterMany_ :: [k] -> (Map k a -> f (Map k a)) -> f ()
-  default alterMany_ :: Functor f => [k] -> (Map k a -> f (Map k a)) -> f ()
+  alterMany_ :: [k] -> (M k a -> f (M k a)) -> f ()
+  default alterMany_ :: Functor f => [k] -> (M k a -> f (M k a)) -> f ()
   alterMany_ ks = void . alterMany ks
+
+  {- alterManyPure_
+     Same as `alterManyPure` except it discards the return value.
+  -}
+  alterManyPure_ :: [k] -> (M k a -> M k a) -> f ()
+  default alterManyPure_ :: Functor f => [k] -> (M k a -> M k a) -> f ()
+  alterManyPure_ ks = void . alterManyPure ks
 
   {- update
      Apply an effectful function on an existing key/value pair in the underlying monad `f`.
@@ -136,6 +182,20 @@ class ( Lookupable a k f
   update_ :: k -> (a -> f (Maybe a)) -> f ()
   default update_ :: Functor f => k -> (a -> f (Maybe a)) -> f ()
   update_ k = void . update k
+
+  {- updatePure
+     A version of `update` that takes a pure function
+  -}
+  updatePure :: k -> (a -> Maybe a) -> f (Maybe a)
+  default updatePure :: Applicative f => k -> (a -> Maybe a) -> f (Maybe a)
+  updatePure k f = update k (pure . f)
+
+  {- updatePure_
+     Same as `updatePure` except it discards the return value.
+  -}
+  updatePure_ :: k -> (a -> Maybe a) -> f ()
+  default updatePure_ :: Functor f => k -> (a -> Maybe a) -> f ()
+  updatePure_ k = void . updatePure k
 
   {- updateStatefully
      Same as `update`, but run in a stateful context.
@@ -170,6 +230,20 @@ class ( Lookupable a k f
   adjust_ :: k -> (a -> f a) -> f ()
   default adjust_ :: Functor f => k -> (a -> f a) -> f ()
   adjust_ k = void . adjust k
+
+  {- adjustPure
+     A version of `adjust` that takes a pure function.
+  -}
+  adjustPure :: k -> (a -> a) -> f a
+  default adjustPure :: Applicative f => k -> (a -> a) -> f a
+  adjustPure k f = adjust k (pure . f)
+
+  {- adjustPure_
+     Same as `adjustPure` except it discards the return value.
+  -}
+  adjustPure_ :: k -> (a -> a) -> f ()
+  default adjustPure_ :: Functor f => k -> (a -> a) -> f ()
+  adjustPure_ k = void . adjustPure k
 
   {- adjustStatefully
      Same as `adjust`, but run in a stateful context.
@@ -278,5 +352,19 @@ class ( Lookupable a k f
   repsert_ :: k -> (Maybe a -> f a) -> f ()
   default repsert_ :: Functor f => k -> (Maybe a -> f a) -> f ()
   repsert_ k = void . repsert k
+
+  {- repsertPure
+     A version of `repsert` that takes a pure function.
+  -}
+  repsertPure :: k -> (Maybe a -> a) -> f a
+  default repsertPure :: Applicative f => k -> (Maybe a -> a) -> f a
+  repsertPure k f = repsert k (pure . f)
+
+  {- repsertPure_
+     Same as `repsertPure` except it discards the return value.
+  -}
+  repsertPure_ :: k -> (Maybe a -> a) -> f ()
+  default repsertPure_ :: Functor f => k -> (Maybe a -> a) -> f ()
+  repsertPure_ k = void . repsertPure k
 
 type Alters k a = Alterable a k

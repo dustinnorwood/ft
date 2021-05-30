@@ -17,9 +17,6 @@ module Control.Monad.Change.Insert
   ) where
 
 import           Data.Foldable               (traverse_)
-import           Data.Map.Strict             (Map)
-import qualified Data.Map.Strict             as M
-import           Data.Maybe
 
 {- The Insertable Typeclass
   `Insertable k a f` is a typeclass used to generalize the Data.Map function `insert` to any monad f.
@@ -36,15 +33,15 @@ class Insertable a k f where
   -}
   insert :: k -> a -> f ()
   default insert :: Applicative f => k -> a -> f ()
-  insert k a = insertMany $ M.singleton k a
+  insert k a = insertMany [(k, a)]
 
   {- insertMany
      Take a `Map k a`, and insert/overwrite its entries in the underlying monad `f`.
      The default instance is implemented as the list version of `insert`.
   -}
-  insertMany :: Map k a -> f ()
-  default insertMany :: Applicative f => Map k a -> f ()
-  insertMany = traverse_ (uncurry insert) . M.assocs
+  insertMany :: [(k, a)] -> f ()
+  default insertMany :: Applicative f => [(k, a)] -> f ()
+  insertMany = traverse_ (uncurry insert)
   
   {-# MINIMAL insert | insertMany #-}
 
