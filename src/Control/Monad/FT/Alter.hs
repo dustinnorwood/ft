@@ -20,12 +20,11 @@ import           Control.Lens
 import           Control.Monad
 import           Control.Monad.FT.Delete
 import           Control.Monad.FT.Insert
-import           Control.Monad.FT.Lookup
+import           Control.Monad.FT.Select
 import           Control.Monad.Trans.State   (evalStateT, execStateT, StateT)
 import           Data.Default
 import           Data.Foldable               (traverse_)
 import           Data.Maybe
-import           Prelude                     hiding (lookup)
 
 type M k a = [(k, Maybe a)]
 
@@ -49,20 +48,20 @@ type M k a = [(k, Maybe a)]
   it makes sense to only implement those respective functions in the monad's `Alterable` instance,
   because there is no way to leverage the database's API to optimize more complex functions.
   In this case, the defaults for composite functions like `alter`, `adjust`, and `update` are
-  implemented using combinations of `lookup`, `insert`, and `delete`. However, let's say the
+  implemented using combinations of `select`, `insert`, and `delete`. However, let's say the
   database we're connecting to supports an update function, which can be called without having
   to retrieve and replace the value associated with a certain key, then it would be more
   efficient to separately implement the `update` or `adjust` functions in the monad's `Alterable`
-  instance, rather than using the default, which is the composition of `lookup` and `insert`.
+  instance, rather than using the default, which is the composition of `select` and `insert`.
   Now, let's say the backend supports some more advanced query language, such as SQL, which
   supports complex CRUD operations, as well as functions to modify data in-place. In this case,
   it might make more sense to implement `alter` and/or `alterMany`, instead of, or in addition to,
-  the standard `lookup`, `insert`, and `delete` functions, because `alterMany` may be written as
+  the standard `select`, `insert`, and `delete` functions, because `alterMany` may be written as
   a SQL query to update millions of rows in a table, without the Haskell code ever having to see
   that data. This is why all of the functions in the Alterable typeclass are inside the class, rather
   than top-level functions with an `Alterable` constraint.
 -}
-class ( Lookupable a k f
+class ( Selectable a k f
       , Insertable a k f
       , Deletable  a k f
       )
@@ -80,7 +79,7 @@ class ( Lookupable a k f
   alterManyReturning :: [k] -> (M k a -> f (b, M k a)) -> f b
   default alterManyReturning :: Monad f => [k] -> (M k a -> f (b, M k a)) -> f b
   alterManyReturning ks f = do
-    m <- lookupMany ks
+    m <- selectMany ks
     ~(b, m') <- f m
     deleteMany @a $ fst <$> filter (isNothing . snd) m'
     insertMany . catMaybes $ sequence <$> m'
