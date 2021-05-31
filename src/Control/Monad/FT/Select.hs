@@ -14,6 +14,9 @@
 module Control.Monad.FT.Select
   ( Selectable(..)
   , Selects
+  , selectWithDefault
+  , selectWithMempty
+  , catMaybes
   ) where
 
 import           Control.Monad
@@ -27,13 +30,13 @@ import           Data.Maybe
     k - the key type, like the `k` in `Map k a`
     f - the underlying monad, such as `State (Map k a)`
 -}
-class Selectable a k f where
+class Monad f => Selectable a k f where
   {- select
      Select the corresponding value for a given key `k` in the underlying monad `f`
      This function is analogous to the `select` function in `Alterable`
   -}
   select :: k -> f (Maybe a)
-  default select :: (Ord k, Functor f) => k -> f (Maybe a)
+  default select :: k -> f (Maybe a)
   select k = join . listToMaybe . map snd <$> selectMany [k]
 
   {- selectMany
@@ -41,30 +44,18 @@ class Selectable a k f where
      underlying type constructor `f`.
   -}
   selectMany :: [k] -> f [(k, Maybe a)]
-  default selectMany :: (Ord k, Applicative f) => [k] -> f [(k, Maybe a)]
+  default selectMany :: [k] -> f [(k, Maybe a)]
   selectMany = traverse (\k -> (k,) <$> select k)
 
   {-# MINIMAL select | selectMany #-}
 
-  {- selectWithDefault
+  {- selectWithFallback
      Select the corresponding value for a given key `k` in the underlying monad `f`,
-     and return `def` if the entry for key `k` is not found.
-     Requires a `Default` instance on the value type `a`.
-     This function is analogous to the `selectWithDefault` function in `Alterable`
+     and return a supplied default value if the entry for key `k` is not found.
   -}
-  selectWithDefault :: k -> f a
-  default selectWithDefault :: (Default a, Functor f) => k -> f a
-  selectWithDefault k = fromMaybe def <$> select k
-
-  {- selectWithMempty
-     Select the corresponding value for a given key `k` in the underlying monad `f`,
-     and return `mempty` if the entry for key `k` is not found.
-     Requires a `Monoid` instance on the value type `a`.
-     This function is analogous to the `selectWithMempty` function in `Alterable`
-  -}
-  selectWithMempty :: k -> f a
-  default selectWithMempty :: (Monoid a, Functor f) => k -> f a
-  selectWithMempty k = fromMaybe mempty <$> select k
+  selectWithFallback :: a -> k -> f a
+  default selectWithFallback :: a -> k -> f a
+  selectWithFallback a k = fromMaybe a <$> select k
 
   {- exists
      Returns a Bool representing whether the entry for a given key `k` exists in the
@@ -73,7 +64,13 @@ class Selectable a k f where
      utilizing this capability can be substantially more performant for large values.
   -}
   exists :: k -> f Bool
-  default exists :: Functor f => k -> f Bool
+  default exists :: k -> f Bool
   exists k = isJust <$> select @a k
 
 type Selects k a = Selectable a k
+
+selectWithDefault :: (Default a, (k `Selects` a) f) => k -> f a
+selectWithDefault = selectWithFallback def
+
+selectWithMempty :: (Monoid a, (k `Selects` a) f) => k -> f a
+selectWithMempty = selectWithFallback mempty

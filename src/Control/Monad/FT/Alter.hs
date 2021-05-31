@@ -14,16 +14,25 @@
 module Control.Monad.FT.Alter
   ( Alterable(..)
   , Alters
+  , adjustWithDefault
+  , adjustWithDefault_
+  , adjustWithDefaultStatefully
+  , adjustWithDefaultStatefully_
+  , adjustWithMempty
+  , adjustWithMempty_
+  , adjustWithMemptyStatefully
+  , adjustWithMemptyStatefully_
+  , module Control.Monad.FT.Select
+  , module Control.Monad.FT.Insert
+  , module Control.Monad.FT.Delete
   ) where
 
-import           Control.Lens
 import           Control.Monad
 import           Control.Monad.FT.Delete
 import           Control.Monad.FT.Insert
 import           Control.Monad.FT.Select
 import           Control.Monad.Trans.State   (evalStateT, execStateT, StateT)
 import           Data.Default
-import           Data.Foldable               (traverse_)
 import           Data.Maybe
 
 type M k a = [(k, Maybe a)]
@@ -61,7 +70,8 @@ type M k a = [(k, Maybe a)]
   that data. This is why all of the functions in the Alterable typeclass are inside the class, rather
   than top-level functions with an `Alterable` constraint.
 -}
-class ( Selectable a k f
+class ( Monad f
+      , Selectable a k f
       , Insertable a k f
       , Deletable  a k f
       )
@@ -77,7 +87,7 @@ class ( Selectable a k f
      efficient implementation for the underlying monad.
   -}
   alterManyReturning :: [k] -> (M k a -> f (b, M k a)) -> f b
-  default alterManyReturning :: Monad f => [k] -> (M k a -> f (b, M k a)) -> f b
+  default alterManyReturning :: [k] -> (M k a -> f (b, M k a)) -> f b
   alterManyReturning ks f = do
     m <- selectMany ks
     ~(b, m') <- f m
@@ -89,27 +99,27 @@ class ( Selectable a k f
      A version of `alterManyReturning` that returns the result of the operation
   -}
   alterMany :: [k] -> (M k a -> f (M k a)) -> f (M k a)
-  default alterMany :: Monad f => [k] -> (M k a -> f (M k a)) -> f (M k a)
+  default alterMany :: [k] -> (M k a -> f (M k a)) -> f (M k a)
   alterMany ks f = alterManyReturning ks (fmap (\a -> (a,a)) . f)
 
   {- alterManyReturningPure
      A version of `alterManyReturning` that takes a pure function
   -}
   alterManyReturningPure :: [k] -> (M k a -> (b, M k a)) -> f b
-  default alterManyReturningPure :: Monad f => [k] -> (M k a -> (b, M k a)) -> f b
+  default alterManyReturningPure :: [k] -> (M k a -> (b, M k a)) -> f b
   alterManyReturningPure ks f = alterManyReturning ks (pure . f)
 
   {- alterManyPure
      A version of `alterMany` that takes a pure function
   -}
   alterManyPure :: [k] -> (M k a -> M k a) -> f (M k a)
-  default alterManyPure :: Monad f => [k] -> (M k a -> M k a) -> f (M k a)
+  default alterManyPure :: [k] -> (M k a -> M k a) -> f (M k a)
   alterManyPure ks f = alterMany ks (pure . f)
 
   {- alterReturning
   -}
   alterReturning :: k -> (Maybe a -> f (b, Maybe a)) -> f b
-  default alterReturning :: Monad f => k -> (Maybe a -> f (b, Maybe a)) -> f b
+  default alterReturning :: k -> (Maybe a -> f (b, Maybe a)) -> f b
   alterReturning k f = alterManyReturning [k] $ \m -> do
     ~(b, ma) <- f . join . listToMaybe $ snd <$> m 
     pure (b, [(k, ma)])
@@ -118,49 +128,49 @@ class ( Selectable a k f
      A version of `alterReturning` that returns the result of the operation
   -}
   alter :: k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
-  default alter :: (Monad f) => k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
+  default alter :: k -> (Maybe a -> f (Maybe a)) -> f (Maybe a)
   alter k f = alterReturning k (fmap (\a -> (a,a)) . f)
 
   {- alterReturningPure
      A version of `alterReturning` that takes a pure function
   -}
   alterReturningPure :: k -> (Maybe a -> (b, Maybe a)) -> f b
-  default alterReturningPure :: (Monad f) => k -> (Maybe a -> (b, Maybe a)) -> f b
+  default alterReturningPure :: k -> (Maybe a -> (b, Maybe a)) -> f b
   alterReturningPure k f = alterReturning k (pure . f)
 
   {- alterPure
      A version of `alter` that takes a pure function
   -}
   alterPure :: k -> (Maybe a -> Maybe a) -> f (Maybe a)
-  default alterPure :: (Monad f) => k -> (Maybe a -> Maybe a) -> f (Maybe a)
+  default alterPure :: k -> (Maybe a -> Maybe a) -> f (Maybe a)
   alterPure k f = alter k (pure . f)
 
   {- alter_
      Same as `alter` except it discards the return value.
   -}
   alter_ :: k -> (Maybe a -> f (Maybe a)) -> f ()
-  default alter_ :: Functor f => k -> (Maybe a -> f (Maybe a)) -> f ()
+  default alter_ :: k -> (Maybe a -> f (Maybe a)) -> f ()
   alter_ k = void . alter k
 
   {- alterPure_
      Same as `alterPure` except it discards the return value.
   -}
   alterPure_ :: k -> (Maybe a -> Maybe a) -> f ()
-  default alterPure_ :: Functor f => k -> (Maybe a -> Maybe a) -> f ()
+  default alterPure_ :: k -> (Maybe a -> Maybe a) -> f ()
   alterPure_ k = void . alterPure k
 
   {- alterMany_
      Same as `alterMany` except it discards the return value.
   -}
   alterMany_ :: [k] -> (M k a -> f (M k a)) -> f ()
-  default alterMany_ :: Functor f => [k] -> (M k a -> f (M k a)) -> f ()
+  default alterMany_ :: [k] -> (M k a -> f (M k a)) -> f ()
   alterMany_ ks = void . alterMany ks
 
   {- alterManyPure_
      Same as `alterManyPure` except it discards the return value.
   -}
   alterManyPure_ :: [k] -> (M k a -> M k a) -> f ()
-  default alterManyPure_ :: Functor f => [k] -> (M k a -> M k a) -> f ()
+  default alterManyPure_ :: [k] -> (M k a -> M k a) -> f ()
   alterManyPure_ ks = void . alterManyPure ks
 
   {- update
@@ -170,7 +180,7 @@ class ( Selectable a k f
      the underlying monad.
   -}
   update :: k -> (a -> f (Maybe a)) -> f (Maybe a)
-  default update :: Applicative f => k -> (a -> f (Maybe a)) -> f (Maybe a)
+  default update :: k -> (a -> f (Maybe a)) -> f (Maybe a)
   update k f = alter k $ \case
     Just a -> f a
     Nothing -> pure Nothing
@@ -179,21 +189,21 @@ class ( Selectable a k f
      Same as `update` except it discards the return value.
   -}
   update_ :: k -> (a -> f (Maybe a)) -> f ()
-  default update_ :: Functor f => k -> (a -> f (Maybe a)) -> f ()
+  default update_ :: k -> (a -> f (Maybe a)) -> f ()
   update_ k = void . update k
 
   {- updatePure
      A version of `update` that takes a pure function
   -}
   updatePure :: k -> (a -> Maybe a) -> f (Maybe a)
-  default updatePure :: Applicative f => k -> (a -> Maybe a) -> f (Maybe a)
+  default updatePure :: k -> (a -> Maybe a) -> f (Maybe a)
   updatePure k f = update k (pure . f)
 
   {- updatePure_
      Same as `updatePure` except it discards the return value.
   -}
   updatePure_ :: k -> (a -> Maybe a) -> f ()
-  default updatePure_ :: Functor f => k -> (a -> Maybe a) -> f ()
+  default updatePure_ :: k -> (a -> Maybe a) -> f ()
   updatePure_ k = void . updatePure k
 
   {- updateStatefully
@@ -202,14 +212,14 @@ class ( Selectable a k f
      lenses to operate on specific fields in the record type.
   -}
   updateStatefully :: k -> StateT a f (Maybe a) -> f (Maybe a)
-  default updateStatefully :: Monad f => k -> StateT a f (Maybe a) -> f (Maybe a)
+  default updateStatefully :: k -> StateT a f (Maybe a) -> f (Maybe a)
   updateStatefully k = update k . evalStateT
 
   {- updateStatefully_
      Same as `updateStatefully` except it discards the return value.
   -}
   updateStatefully_ :: k -> StateT a f (Maybe a) -> f ()
-  default updateStatefully_ :: Functor f => k -> StateT a f (Maybe a) -> f ()
+  default updateStatefully_ :: k -> StateT a f (Maybe a) -> f ()
   updateStatefully_ k = void . updateStatefully k
 
   {- adjust
@@ -220,28 +230,28 @@ class ( Selectable a k f
      `adjust`.
   -}
   adjust :: k -> (a -> f a) -> f a
-  default adjust :: Functor f => k -> (a -> f a) -> f a
+  default adjust :: k -> (a -> f a) -> f a
   adjust k f = fromJust <$> update k (fmap Just . f)
 
   {- adjust_
      Same as `adjust` except it discards the return value.
   -}
   adjust_ :: k -> (a -> f a) -> f ()
-  default adjust_ :: Functor f => k -> (a -> f a) -> f ()
+  default adjust_ :: k -> (a -> f a) -> f ()
   adjust_ k = void . adjust k
 
   {- adjustPure
      A version of `adjust` that takes a pure function.
   -}
   adjustPure :: k -> (a -> a) -> f a
-  default adjustPure :: Applicative f => k -> (a -> a) -> f a
+  default adjustPure :: k -> (a -> a) -> f a
   adjustPure k f = adjust k (pure . f)
 
   {- adjustPure_
      Same as `adjustPure` except it discards the return value.
   -}
   adjustPure_ :: k -> (a -> a) -> f ()
-  default adjustPure_ :: Functor f => k -> (a -> a) -> f ()
+  default adjustPure_ :: k -> (a -> a) -> f ()
   adjustPure_ k = void . adjustPure k
 
   {- adjustStatefully
@@ -250,89 +260,48 @@ class ( Selectable a k f
      lenses to operate on specific fields in the record type.
   -}
   adjustStatefully :: k -> StateT a f () -> f a
-  default adjustStatefully :: Monad f => k -> StateT a f () -> f a
+  default adjustStatefully :: k -> StateT a f () -> f a
   adjustStatefully k = adjust k . execStateT
 
   {- adjustStatefully_
      Same as `adjustStatefully` except it discards the return value.
   -}
   adjustStatefully_ :: k -> StateT a f () -> f ()
-  default adjustStatefully_ :: Functor f => k -> StateT a f () -> f ()
+  default adjustStatefully_ :: k -> StateT a f () -> f ()
   adjustStatefully_ k = void . adjustStatefully k
 
-  {- adjustWithDefault
+  {- adjustWithFallback
      Adjust the corresponding value for a given key `k` in the underlying monad `f`,
-     If the entry for key `k` does not exist in the underlying monad beforehand, `def`
+     If the entry for key `k` does not exist in the underlying monad beforehand, a fallback value
      is passed to the function. This ensures that the entry for key `k` will exist
-     in the underlying monad after calling `adjustWithDefault`.
-     Requires a `Default` instance on the value type `a`.
+     in the underlying monad after calling `adjustWithFallback`.
   -}
-  adjustWithDefault :: k -> (a -> f a) -> f a
-  default adjustWithDefault :: (Default a, Functor f) => k -> (a -> f a) -> f a
-  adjustWithDefault k f = fromJust <$> alter k (fmap Just . f . fromMaybe def)
+  adjustWithFallback :: a -> k -> (a -> f a) -> f a
+  default adjustWithFallback :: a -> k -> (a -> f a) -> f a
+  adjustWithFallback a k f = fromJust <$> alter k (fmap Just . f . fromMaybe a)
 
-  {- adjustWithDefault_
-     Same as `adjustWithDefault` except it discards the return value.
-     Requires a `Default` instance on the value type `a`.
+  {- adjustWithFallback_
+     Same as `adjustWithFallback` except it discards the return value.
   -}
-  adjustWithDefault_ :: k -> (a -> f a) -> f ()
-  default adjustWithDefault_ :: Functor f => k -> (a -> f a) -> f ()
-  adjustWithDefault_ k = void . adjustWithDefault k
+  adjustWithFallback_ :: a -> k -> (a -> f a) -> f ()
+  default adjustWithFallback_ :: a -> k -> (a -> f a) -> f ()
+  adjustWithFallback_ a k = void . adjustWithFallback a k
 
-  {- adjustWithDefaultStatefully
-     Same as `adjustWithDefault`, but run in a stateful context.
+  {- adjustWithFallbackStatefully
+     Same as `adjustWithFallback`, but run in a stateful context.
      This is useful when applying complex functions to the value, especially when the using
      lenses to operate on specific fields in the record type.
-     Requires a `Default` instance on the value type `a`.
   -}
-  adjustWithDefaultStatefully :: k -> StateT a f () -> f a
-  default adjustWithDefaultStatefully :: Monad f => k -> StateT a f () -> f a
-  adjustWithDefaultStatefully k = adjustWithDefault k . execStateT
+  adjustWithFallbackStatefully :: a -> k -> StateT a f () -> f a
+  default adjustWithFallbackStatefully :: a -> k -> StateT a f () -> f a
+  adjustWithFallbackStatefully a k = adjustWithFallback a k . execStateT
 
-  {- adjustWithDefaultStatefully_
-     Same as `adjustWithDefaultStatefully` except it discards the return value.
-     Requires a `Default` instance on the value type `a`.
+  {- adjustWithFallbackStatefully_
+     Same as `adjustWithFallbackStatefully` except it discards the return value.
   -}
-  adjustWithDefaultStatefully_ :: k -> StateT a f () -> f ()
-  default adjustWithDefaultStatefully_ :: Functor f => k -> StateT a f () -> f ()
-  adjustWithDefaultStatefully_ k = void . adjustWithDefaultStatefully k
-
-  {- adjustWithMempty
-     Adjust the corresponding value for a given key `k` in the underlying monad `f`,
-     If the entry for key `k` does not exist in the underlying monad beforehand, `mempty`
-     is passed to the function. This ensures that the entry for key `k` will exist
-     in the underlying monad after calling `adjustWithMempty`.
-     Requires a `Monoid` instance on the value type `a`.
-  -}
-  adjustWithMempty :: k -> (a -> f a) -> f a
-  default adjustWithMempty :: (Monoid a, Functor f) => k -> (a -> f a) -> f a
-  adjustWithMempty k f = fromJust <$> alter k (fmap Just . f . fromMaybe mempty)
-
-  {- adjustWithMempty_
-     Same as `adjustWithMempty` except it discards the return value.
-     Requires a `Monoid` instance on the value type `a`.
-  -}
-  adjustWithMempty_ :: k -> (a -> f a) -> f ()
-  default adjustWithMempty_ :: Functor f => k -> (a -> f a) -> f ()
-  adjustWithMempty_ k = void . adjustWithMempty k
-
-  {- adjustWithMemptyStatefully
-     Same as `adjustWithMempty`, but run in a stateful context.
-     This is useful when applying complex functions to the value, especially when the using
-     lenses to operate on specific fields in the record type.
-     Requires a `Monoid` instance on the value type `a`.
-  -}
-  adjustWithMemptyStatefully :: k -> StateT a f () -> f a
-  default adjustWithMemptyStatefully :: Monad f => k -> StateT a f () -> f a
-  adjustWithMemptyStatefully k = adjustWithMempty k . execStateT
-
-  {- adjustWithMemptyStatefully_
-     Same as `adjustWithMemptyStatefully` except it discards the return value.
-     Requires a `Monoid` instance on the value type `a`.
-  -}
-  adjustWithMemptyStatefully_ :: Monoid a => k -> StateT a f () -> f ()
-  default adjustWithMemptyStatefully_ :: Functor f => k -> StateT a f () -> f ()
-  adjustWithMemptyStatefully_ k = void . adjustWithMemptyStatefully k
+  adjustWithFallbackStatefully_ :: a -> k -> StateT a f () -> f ()
+  default adjustWithFallbackStatefully_ :: a -> k -> StateT a f () -> f ()
+  adjustWithFallbackStatefully_ a k = void . adjustWithFallbackStatefully a k
 
   {- repsert
      Insert a key/value pair into the underlying monad `f`, but use the existing value,
@@ -342,28 +311,52 @@ class ( Selectable a k f
      monad `f`.
   -}
   repsert :: k -> (Maybe a -> f a) -> f a
-  default repsert :: Functor f => k -> (Maybe a -> f a) -> f a
+  default repsert :: k -> (Maybe a -> f a) -> f a
   repsert k f = fromJust <$> alter k (fmap Just . f)
 
   {- repsert_
      Same as `repsert` except it discards the return value.
   -}
   repsert_ :: k -> (Maybe a -> f a) -> f ()
-  default repsert_ :: Functor f => k -> (Maybe a -> f a) -> f ()
+  default repsert_ :: k -> (Maybe a -> f a) -> f ()
   repsert_ k = void . repsert k
 
   {- repsertPure
      A version of `repsert` that takes a pure function.
   -}
   repsertPure :: k -> (Maybe a -> a) -> f a
-  default repsertPure :: Applicative f => k -> (Maybe a -> a) -> f a
+  default repsertPure :: k -> (Maybe a -> a) -> f a
   repsertPure k f = repsert k (pure . f)
 
   {- repsertPure_
      Same as `repsertPure` except it discards the return value.
   -}
   repsertPure_ :: k -> (Maybe a -> a) -> f ()
-  default repsertPure_ :: Functor f => k -> (Maybe a -> a) -> f ()
+  default repsertPure_ :: k -> (Maybe a -> a) -> f ()
   repsertPure_ k = void . repsertPure k
 
 type Alters k a = Alterable a k
+
+adjustWithDefault :: (Default a, (k `Alters` a) f) => k -> (a -> f a) -> f a
+adjustWithDefault = adjustWithFallback def
+
+adjustWithDefault_ :: (Default a, (k `Alters` a) f) => k -> (a -> f a) -> f ()
+adjustWithDefault_ = adjustWithFallback_ def
+
+adjustWithDefaultStatefully :: (Default a, (k `Alters` a) f) => k -> StateT a f () -> f a
+adjustWithDefaultStatefully = adjustWithFallbackStatefully def
+
+adjustWithDefaultStatefully_ :: (Default a, (k `Alters` a) f) => k -> StateT a f () -> f ()
+adjustWithDefaultStatefully_ = adjustWithFallbackStatefully_ def
+
+adjustWithMempty :: (Monoid a, (k `Alters` a) f) => k -> (a -> f a) -> f a
+adjustWithMempty = adjustWithFallback mempty
+
+adjustWithMempty_ :: (Monoid a, (k `Alters` a) f) => k -> (a -> f a) -> f ()
+adjustWithMempty_ = adjustWithFallback_ mempty
+
+adjustWithMemptyStatefully :: (Monoid a, (k `Alters` a) f) => k -> StateT a f () -> f a
+adjustWithMemptyStatefully = adjustWithFallbackStatefully mempty
+
+adjustWithMemptyStatefully_ :: (Monoid a, (k `Alters` a) f) => k -> StateT a f () -> f ()
+adjustWithMemptyStatefully_ = adjustWithFallbackStatefully_ mempty

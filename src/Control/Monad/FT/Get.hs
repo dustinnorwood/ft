@@ -12,8 +12,8 @@ module Control.Monad.FT.Get
     a - the value type, like the `s` in `State s a`
     f - the underlying type constructor, such as `State s`
 -}
-class Gettable a f where
+class Monad f => Gettable a f where
   get :: f a
 
-gets :: (Functor f, Gettable a f) => (a -> b) -> f b
+gets :: Gettable a f => (a -> b) -> f b
 gets = flip fmap get

@@ -9,9 +9,11 @@
 
 module Control.Monad.FT.Modify
   ( Modifiable(..)
+  , module Control.Monad.FT.Get
+  , module Control.Monad.FT.Put
   ) where
 
-import           Control.Monad                    (void, mapM_)
+import           Control.Monad                    (void)
 import           Control.Monad.FT.Get
 import           Control.Monad.FT.Put
 import           Control.Monad.Trans.State        (execStateT, runStateT, StateT)
@@ -71,7 +73,8 @@ import           Control.Monad.Trans.State        (execStateT, runStateT, StateT
   `updateInt` and `updateString`, we'd have to call `get` in both, because we'd have to retrieve the
   other half of the state to preserve it.
 -}
-class ( Gettable a f
+class ( Monad f
+      , Gettable a f
       , Puttable a f
       )
      => Modifiable a f where
@@ -83,42 +86,42 @@ class ( Gettable a f
      efficient implementation for the underlying monad.
   -}
   modifyReturning :: (a -> f (b, a)) -> f b
-  default modifyReturning :: Monad f => (a -> f (b, a)) -> f b
+  default modifyReturning :: (a -> f (b, a)) -> f b
   modifyReturning f = get >>= f >>= \ba -> put (snd ba) >> return (fst ba)
 
   {- modify
      Version of modifyReturning that returns the result of the modification function.
   -}
   modify :: (a -> f a) -> f a
-  default modify :: Monad f => (a -> f a) -> f a
+  default modify :: (a -> f a) -> f a
   modify f = modifyReturning (fmap (\a -> (a, a)) . f)
 
   {- modifyReturningPure
      Version of modifyReturning that takes a pure function instead of an effectful function.
   -}
   modifyReturningPure :: (a -> (b, a)) -> f b
-  default modifyReturningPure :: Monad f => (a -> (b, a)) -> f b
+  default modifyReturningPure :: (a -> (b, a)) -> f b
   modifyReturningPure f = modifyReturning (pure . f)
 
   {- modifyPure
      Version of modify that takes a pure function instead of an effectful function.
   -}
   modifyPure :: (a -> a) -> f a
-  default modifyPure :: Monad f => (a -> a) -> f a
+  default modifyPure :: (a -> a) -> f a
   modifyPure f = modify (pure . f)
 
   {- modify_
      The same as `modify`, but ignore the return value.
   -}
   modify_ :: (a -> f a) -> f ()
-  default modify_ :: Functor f => (a -> f a) -> f ()
+  default modify_ :: (a -> f a) -> f ()
   modify_ = void . modify
 
   {- modifyPure_
      The same as `modify`, but ignore the return value.
   -}
   modifyPure_ :: (a -> a) -> f ()
-  default modifyPure_ :: Functor f => (a -> a) -> f ()
+  default modifyPure_ :: (a -> a) -> f ()
   modifyPure_ = void . modifyPure
 
   {- modifyReturningStatefully
@@ -127,7 +130,7 @@ class ( Gettable a f
      lenses to operate on specific fields in the record type.
   -}
   modifyReturningStatefully :: StateT a f b -> f b
-  default modifyReturningStatefully :: Monad f => StateT a f b -> f b
+  default modifyReturningStatefully :: StateT a f b -> f b
   modifyReturningStatefully = modifyReturning . runStateT
 
   {- modifyStatefully
@@ -136,12 +139,12 @@ class ( Gettable a f
      lenses to operate on specific fields in the record type.
   -}
   modifyStatefully :: StateT a f () -> f a
-  default modifyStatefully :: Monad f => StateT a f () -> f a
+  default modifyStatefully :: StateT a f () -> f a
   modifyStatefully = modify . execStateT
 
   {- modifyStatefully_
      The same as `modify`, but ignore the return value.
   -}
   modifyStatefully_ :: StateT a f () -> f ()
-  default modifyStatefully_ :: Functor f => StateT a f () -> f ()
+  default modifyStatefully_ :: StateT a f () -> f ()
   modifyStatefully_ = void . modifyStatefully

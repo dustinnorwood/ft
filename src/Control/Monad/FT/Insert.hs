@@ -27,12 +27,12 @@ import           Data.Foldable               (traverse_)
   Use this typeclass instead of `Alterable` when `insert` functionality is all that is needed.
   NB: This typeclass may not be useful in real-world applications, but is provided for completeness.
 -}
-class Insertable a k f where
+class Monad f => Insertable a k f where
   {- insert
      Insert the corresponding key/value pair in the underlying monad `f`
   -}
   insert :: k -> a -> f ()
-  default insert :: Applicative f => k -> a -> f ()
+  default insert :: k -> a -> f ()
   insert k a = insertMany [(k, a)]
 
   {- insertMany
@@ -40,7 +40,7 @@ class Insertable a k f where
      The default instance is implemented as the list version of `insert`.
   -}
   insertMany :: [(k, a)] -> f ()
-  default insertMany :: Applicative f => [(k, a)] -> f ()
+  default insertMany :: [(k, a)] -> f ()
   insertMany = traverse_ (uncurry insert)
   
   {-# MINIMAL insert | insertMany #-}

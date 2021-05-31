@@ -12,5 +12,5 @@ module Control.Monad.FT.Put
     f - the underlying type constructor, such as `State s`
   Use this typeclass instead of `Modifiable` when `put` functionality is all that is needed.
 -}
-class Puttable a f where
+class Monad f => Puttable a f where
   put :: a -> f ()

@@ -16,7 +16,6 @@ module Control.Monad.FT.Delete
   , Deletes
   ) where
 
-import           Control.Monad
 import           Data.Foldable               (traverse_)
 
 {- The Deletable Typeclass
@@ -29,13 +28,13 @@ import           Data.Foldable               (traverse_)
   NB: This typeclass may not be useful in real-world applications, but is provided for completeness.
   TODO: implement a `deleteMany` function, analogous to `deleteMany`.
 -}
-class Deletable a k f where
+class Monad f => Deletable a k f where
 
   {- delete
      Delete the corresponding entry for the key `k` in the underlying monad `f`
   -}
   delete :: k -> f ()
-  default delete :: Applicative f => k -> f ()
+  default delete :: k -> f ()
   delete k = deleteMany @a [k]
 
   {- deleteMany
@@ -43,7 +42,7 @@ class Deletable a k f where
      The default instance is implemented as the list version of `delete`.
   -}
   deleteMany :: [k] -> f ()
-  default deleteMany :: Applicative f => [k] -> f ()
+  default deleteMany :: [k] -> f ()
   deleteMany = traverse_ (delete @a)
 
   {-# MINIMAL delete | deleteMany #-}
